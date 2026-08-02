@@ -4,15 +4,13 @@ from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import or_, select
 
 from src.bot.filters import OwnerOnly
 from src.core.chat_service import load_chat
 from src.core.contact_resolver import resolve
 from src.core.indexer import index_chat
 from src.core.vector_store import vector_store
-from src.db.models import Message as DBMessage
-from src.db.repo import get_contact, get_or_create_user
+from src.db.repo import fts_search, get_contact, get_or_create_user, list_contacts
 from src.db.session import get_session
 from src.llm.router import build_provider
 from src.userbot.manager import UserbotManager
@@ -27,7 +25,7 @@ router.callback_query.filter(OwnerOnly())
 def _result_keyboard(peer_id: int, message_id: int):
     kb = InlineKeyboardBuilder()
     kb.row(
-        InlineKeyboardButton(text="➡ Переслать мне", callback_data=f"search:fwd:{peer_id}:{message_id}"),
+        InlineKeyboardButton(text="➡ Переслати мені", callback_data=f"search:fwd:{peer_id}:{message_id}"),
     )
     return kb.as_markup()
 
@@ -36,26 +34,26 @@ def _result_keyboard(peer_id: int, message_id: int):
 async def cmd_index(message: Message, command: CommandObject, userbot_manager: UserbotManager) -> None:
     client = userbot_manager.get_client(message.from_user.id)
     if client is None:
-        await message.answer("Сначала /login.")
+        await message.answer("Спершу /login.")
         return
     query = (command.args or "").strip()
     if not query:
-        await message.answer("Использование: <code>/index имя контакта</code>")
+        await message.answer("Використання: <code>/index ім'я контакту</code>")
         return
 
     async with get_session() as session:
         owner = await get_or_create_user(session, message.from_user.id)
     candidates = await resolve(client, owner, query)
     if not candidates:
-        await message.answer("Не нашёл контакт. Попробуй /sync.")
+        await message.answer("Не знайшов контакт. Спробуй /sync.")
         return
     if len(candidates) > 1 and candidates[0].score < 90:
         kb = InlineKeyboardBuilder()
         for c in candidates:
             kb.row(InlineKeyboardButton(text=f"{c.label()} · {c.score}",
                                         callback_data=f"search:idx:{c.peer_id}"))
-        kb.row(InlineKeyboardButton(text="❌ Отмена", callback_data="search:cancel:0"))
-        await message.answer("Кого индексируем?", reply_markup=kb.as_markup())
+        kb.row(InlineKeyboardButton(text="❌ Скасувати", callback_data="search:cancel:0"))
+        await message.answer("Кого індексуємо?", reply_markup=kb.as_markup())
         return
 
     await _do_index(message, candidates[0].peer_id, userbot_manager)
@@ -65,7 +63,7 @@ async def cmd_index(message: Message, command: CommandObject, userbot_manager: U
 async def cb_idx_pick(callback: CallbackQuery, userbot_manager: UserbotManager) -> None:
     peer_id = int(callback.data.split(":")[2])
     if callback.message:
-        await callback.message.edit_text("⏳ Индексирую...")
+        await callback.message.edit_text("⏳ Індексую...")
     await _do_index(callback.message, peer_id, userbot_manager, telegram_id=callback.from_user.id)
     await callback.answer()
 
@@ -75,7 +73,7 @@ async def _do_index(message_or_msg, peer_id: int, userbot_manager: UserbotManage
     tg_id = telegram_id or message_or_msg.from_user.id
     client = userbot_manager.get_client(tg_id)
     if client is None:
-        await message_or_msg.answer("Нет активного userbot. /login.")
+        await message_or_msg.answer("Немає активного userbot. /login.")
         return
 
     # сначала подтянуть до 500 сообщений в БД
@@ -87,17 +85,17 @@ async def _do_index(message_or_msg, peer_id: int, userbot_manager: UserbotManage
         provider = await build_provider(session, owner)
 
     if not contact or not provider:
-        await message_or_msg.answer("Контакт или LLM-ключ не найдены.")
+        await message_or_msg.answer("Контакт або LLM-ключ не знайдено.")
         return
 
     n = await index_chat(provider, owner, contact)
-    await message_or_msg.answer(f"✅ Проиндексировано <b>{n}</b> сообщений в чате с {contact.display_name}.")
+    await message_or_msg.answer(f"✅ Проіндексовано <b>{n}</b> повідомлень у чаті з {contact.display_name}.")
 
 
 @router.callback_query(F.data == "search:cancel:0")
 async def cb_cancel(callback: CallbackQuery) -> None:
     if callback.message:
-        await callback.message.edit_text("Отменено.")
+        await callback.message.edit_text("Скасовано.")
     await callback.answer()
 
 
@@ -105,47 +103,43 @@ async def cb_cancel(callback: CallbackQuery) -> None:
 async def cmd_search(message: Message, command: CommandObject, userbot_manager: UserbotManager) -> None:
     query = (command.args or "").strip()
     if not query:
-        await message.answer("Использование: <code>/search текст запроса</code>")
+        await message.answer("Використання: <code>/search текст запиту</code>")
         return
 
     async with get_session() as session:
         owner = await get_or_create_user(session, message.from_user.id)
         provider = await build_provider(session, owner)
+        contacts = await list_contacts(session, owner, include_bots=True)
+    bot_peer_ids = {c.peer_id for c in contacts if c.is_bot}
 
     hits_text: list[tuple[int, int, str, str | None, float]] = []  # (peer_id, msg_id, text, peer_name, score)
 
     if provider is not None:
         try:
             vec = await provider.embed(query)
-            vec_hits = await vector_store.search(user_id=owner.id, embedding=vec, limit=8)
-            hits_text = [(h.peer_id, h.message_id, h.text, h.peer_name, h.score) for h in vec_hits]
+            vec_hits = await vector_store.search(user_id=owner.id, embedding=vec, limit=16)
+            hits_text = [
+                (h.peer_id, h.message_id, h.text, h.peer_name, h.score)
+                for h in vec_hits
+                if h.peer_id not in bot_peer_ids
+            ]
         except Exception:
             logger.exception("vector search failed")
 
     if not hits_text:
-        # fallback: LIKE по БД
-        like = f"%{query}%"
+        # Fallback: FTS5 по отдельным словам запроса (prefix-match, BM25-ранжирование),
+        # а не MATCH всей фразы целиком — так находит и при неточной формулировке.
+        contact_by_pid = {c.peer_id: c for c in contacts}
         async with get_session() as session:
-            result = await session.execute(
-                select(DBMessage)
-                .where(
-                    DBMessage.user_id == owner.id,
-                    or_(
-                        DBMessage.text.ilike(like),
-                        DBMessage.transcript.ilike(like),
-                        DBMessage.extracted_text.ilike(like),
-                    ),
-                )
-                .order_by(DBMessage.date.desc())
-                .limit(8)
-            )
-            db_hits = list(result.scalars().all())
-        for m in db_hits:
-            body = (m.transcript or m.text or m.extracted_text or "")[:400]
-            hits_text.append((m.peer_id, m.message_id, body, m.sender_name, 0.0))
+            fts_hits = await fts_search(session, owner.id, query, limit=16)
+        for h in fts_hits:
+            if h.peer_id in bot_peer_ids:
+                continue
+            c = contact_by_pid.get(h.peer_id)
+            hits_text.append((h.peer_id, h.message_id, h.snippet, c.display_name if c else h.sender_name, 0.0))
 
     if not hits_text:
-        await message.answer("Ничего не нашлось. Попробуй /index <контакт> для индексации.")
+        await message.answer("Нічого не знайшлося. Спробуй /index &lt;контакт&gt; для індексації.")
         return
 
     for peer_id, msg_id, body, peer_name, score in hits_text[:8]:
@@ -161,13 +155,13 @@ async def cb_forward(callback: CallbackQuery, userbot_manager: UserbotManager) -
     msg_id = int(parts[3])
     client = userbot_manager.get_client(callback.from_user.id)
     if client is None:
-        await callback.answer("Нет userbot, /login", show_alert=True)
+        await callback.answer("Немає userbot, /login", show_alert=True)
         return
     try:
         entity = await client.get_entity(peer_id)
         await client.forward_messages("me", msg_id, entity)
     except Exception:
         logger.exception("forward failed")
-        await callback.answer("Не удалось переслать", show_alert=True)
+        await callback.answer("Не вдалося переслати", show_alert=True)
         return
     await callback.answer("Переслано в Saved Messages")

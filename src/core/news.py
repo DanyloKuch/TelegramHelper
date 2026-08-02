@@ -22,13 +22,13 @@ logger = logging.getLogger(__name__)
 
 
 NEWS_SYSTEM = (
-    "Ты собираешь новостной дайджест по запрошенной теме на основе постов из Telegram-каналов.\n"
-    "Структура ответа (HTML aiogram):\n"
+    "Ти збираєш новинний дайджест за запитаною темою на основі постів із Telegram-каналів.\n"
+    "Структура відповіді (HTML aiogram):\n"
     "📰 <b>Тема:</b> ...\n"
-    "🔑 <b>Главное</b> — 3–6 буллетов, по каждому в скобках указывай канал.\n"
-    "📅 <b>Хронология</b> — события по времени, если важно.\n"
-    "🔀 <b>Расхождения</b> — где источники не сходятся (если есть).\n"
-    "Не выдумывай факты, опирайся только на присланные посты. Каждый буллет — фактологичен."
+    "🔑 <b>Головне</b> — 3–6 булетів, по кожному в дужках вказуй канал.\n"
+    "📅 <b>Хронологія</b> — події за часом, якщо важливо.\n"
+    "🔀 <b>Розбіжності</b> — де джерела не сходяться (якщо є).\n"
+    "Не вигадуй факти, опирайся лише на надіслані пости. Кожен булет — фактологічний."
 )
 
 
@@ -109,13 +109,13 @@ async def build_news_digest(
         heavy = owner.settings.use_heavy_model
 
     if provider is None:
-        return "Не задан LLM-ключ. Настрой в /settings → LLM."
+        return "Не заданий LLM-ключ. Налаштуй у /settings → LLM."
     if not channels:
-        return "Не нашёл каналов. Сначала /sync, потом помечь нужные через /news_channels."
+        return "Не знайшов каналів. Спершу /sync, потім познач потрібні через /news_channels."
 
     posts = await _gather_posts(client, channels, hours=hours, per_channel_limit=per_channel_limit)
     if not posts:
-        return f"За последние {hours}ч в твоих каналах постов не нашёл."
+        return f"За останні {hours}год у твоїх каналах постів не знайшов."
 
     # embedding темы
     try:
@@ -154,10 +154,10 @@ async def build_news_digest(
     body = "\n\n---\n\n".join(lines)
 
     user_prompt = (
-        f"Тема запроса: {topic}\n"
-        f"Окно: последние {hours} часов\n"
-        f"Каналов: {len(channels)}, релевантных постов: {len(relevant)}\n\n"
-        f"Посты:\n\n{body}"
+        f"Тема запиту: {topic}\n"
+        f"Вікно: останні {hours} годин\n"
+        f"Каналів: {len(channels)}, релевантних постів: {len(relevant)}\n\n"
+        f"Пости:\n\n{body}"
     )
     raw = await provider.chat(
         [
@@ -196,7 +196,7 @@ async def news_scheduler_loop() -> None:
                     logger.warning("news scheduler: no userbot client for owner %s", owner_id)
                 else:
                     await notifier.notify(
-                        f"📰 <b>Авто-новости</b> · {len(topics_to_run)} тем(ы)…"
+                        f"📰 <b>Авто-новини</b> · {len(topics_to_run)} тем(и)…"
                     )
                     for topic, hours in topics_to_run:
                         try:

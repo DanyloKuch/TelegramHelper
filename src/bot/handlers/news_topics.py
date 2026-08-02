@@ -34,19 +34,19 @@ async def _render(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
         s = owner.settings
 
     text_lines = [
-        "📰 <b>Темы для авто-новостей</b>",
+        "📰 <b>Теми для авто-новин</b>",
         "",
-        f"Авто-новости: <b>{'ВКЛ' if s.news_enabled else 'ВЫКЛ'}</b> · ежедневно в <b>{s.news_digest_time}</b> · {tz_short(s.timezone)}",
+        f"Авто-новини: <b>{'УВІМК' if s.news_enabled else 'ВИМК'}</b> · щодня о <b>{s.news_digest_time}</b> · {tz_short(s.timezone)}",
         "",
     ]
     if not topics:
-        text_lines.append("<i>Тем пока нет. Нажми «➕ Добавить тему».</i>")
+        text_lines.append("<i>Тем поки немає. Натисни «➕ Додати тему».</i>")
     else:
         for t in topics:
-            text_lines.append(f"{_check(t.enabled)} <b>{t.topic}</b> · окно {t.hours}ч")
+            text_lines.append(f"{_check(t.enabled)} <b>{t.topic}</b> · вікно {t.hours}год")
 
     text_lines.append("")
-    text_lines.append("<i>Тапни тему, чтобы вкл/выкл. Включить авто-новости и время — в /settings → Новости.</i>")
+    text_lines.append("<i>Тапни тему, щоб увімк/вимк. Увімкнути авто-новини й час — у /settings → Новини.</i>")
 
     kb = InlineKeyboardBuilder()
     for t in topics:
@@ -57,7 +57,7 @@ async def _render(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
             ),
             InlineKeyboardButton(text="🗑", callback_data=f"nt:del:{t.id}"),
         )
-    kb.row(InlineKeyboardButton(text="➕ Добавить тему", callback_data="nt:add"))
+    kb.row(InlineKeyboardButton(text="➕ Додати тему", callback_data="nt:add"))
     return "\n".join(text_lines), kb.as_markup()
 
 
@@ -80,9 +80,9 @@ async def _refresh(callback: CallbackQuery) -> None:
 async def cb_add(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(NewsTopicStates.waiting_topic)
     await callback.message.answer(
-        "Введи тему одной фразой (можно с указанием окна — «AI и регулирование 48»).\n"
-        "Если число в конце есть — это окно в часах (по умолчанию 24).\n"
-        "/cancel — отмена."
+        "Введи тему однією фразою (можна з вказанням вікна — «AI та регулювання 48»).\n"
+        "Якщо число в кінці є — це вікно в годинах (за замовчуванням 24).\n"
+        "/cancel — скасувати."
     )
     await callback.answer()
 
@@ -91,7 +91,7 @@ async def cb_add(callback: CallbackQuery, state: FSMContext) -> None:
 async def step_topic(message: Message, state: FSMContext) -> None:
     raw = (message.text or "").strip()
     if not raw:
-        await message.answer("Пустая тема. Повтори или /cancel.")
+        await message.answer("Порожня тема. Повтори або /cancel.")
         return
     parts = raw.rsplit(" ", 1)
     hours = 24
@@ -100,7 +100,7 @@ async def step_topic(message: Message, state: FSMContext) -> None:
         hours = max(1, min(168, int(parts[1])))
         topic = parts[0].strip()
     if not topic:
-        await message.answer("Не похоже на тему. Повтори или /cancel.")
+        await message.answer("Не схоже на тему. Повтори або /cancel.")
         return
 
     async with get_session() as session:
@@ -109,7 +109,7 @@ async def step_topic(message: Message, state: FSMContext) -> None:
 
     await state.clear()
     text, kb = await _render(message.from_user.id)
-    await message.answer(f"✅ Добавил: <b>{topic}</b> (окно {hours}ч)")
+    await message.answer(f"✅ Додав: <b>{topic}</b> (вікно {hours}год)")
     await message.answer(text, reply_markup=kb)
 
 
@@ -120,10 +120,10 @@ async def cb_toggle(callback: CallbackQuery) -> None:
         owner = await get_or_create_user(session, callback.from_user.id)
         new_state = await toggle_news_topic(session, owner, topic_id)
     if new_state is None:
-        await callback.answer("Тема не найдена", show_alert=True)
+        await callback.answer("Тему не знайдено", show_alert=True)
         return
     await _refresh(callback)
-    await callback.answer("Включено" if new_state else "Выключено")
+    await callback.answer("Увімкнено" if new_state else "Вимкнено")
 
 
 @router.callback_query(F.data.startswith("nt:del:"))
@@ -133,7 +133,7 @@ async def cb_delete(callback: CallbackQuery) -> None:
         owner = await get_or_create_user(session, callback.from_user.id)
         ok = await delete_news_topic(session, owner, topic_id)
     if not ok:
-        await callback.answer("Не найдена", show_alert=True)
+        await callback.answer("Не знайдено", show_alert=True)
         return
     await _refresh(callback)
-    await callback.answer("Удалена")
+    await callback.answer("Видалено")

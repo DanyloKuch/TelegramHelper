@@ -27,41 +27,41 @@ async def cmd_digest(message: Message, command: CommandObject) -> None:
         await message.answer(text)
         return
 
-    if arg in {"on", "enable", "вкл"}:
+    if arg in {"on", "enable", "увімк", "вкл"}:
         async with get_session() as session:
             owner = await get_or_create_user(session, message.from_user.id)
             owner.settings.digest_enabled = True
             tz = owner.settings.timezone
             digest_time = owner.settings.digest_time
         await message.answer(
-            f"☀ Дайджест включён. Время: {digest_time} · {tz_short(tz)}.\n"
-            "Изменить: /digest at HH:MM или /settings → Дайджест."
+            f"☀ Дайджест увімкнено. Час: {digest_time} · {tz_short(tz)}.\n"
+            "Змінити: /digest at HH:MM або /settings → Дайджест."
         )
         return
 
-    if arg in {"off", "disable", "выкл"}:
+    if arg in {"off", "disable", "вимк", "выкл"}:
         async with get_session() as session:
             owner = await get_or_create_user(session, message.from_user.id)
             owner.settings.digest_enabled = False
-        await message.answer("Дайджест выключен.")
+        await message.answer("Дайджест вимкнено.")
         return
 
     if arg.startswith("at "):
         hm = arg[3:].strip()
         if not HM_RE.match(hm):
-            await message.answer("Формат: <code>/digest at HH:MM</code> (в твоём TZ, напр. <code>06:30</code>)")
+            await message.answer("Формат: <code>/digest at HH:MM</code> (у твоєму TZ, напр. <code>06:30</code>)")
             return
         async with get_session() as session:
             owner = await get_or_create_user(session, message.from_user.id)
             owner.settings.digest_time = hm
             owner.settings.digest_enabled = True
             tz = owner.settings.timezone
-        await message.answer(f"☀ Дайджест будет в {hm} ежедневно · {tz_short(tz)}.")
+        await message.answer(f"☀ Дайджест буде о {hm} щодня · {tz_short(tz)}.")
         return
 
     await message.answer(
-        "Использование:\n"
-        "<code>/digest</code> — собрать сейчас\n"
+        "Використання:\n"
+        "<code>/digest</code> — зібрати зараз\n"
         "<code>/digest on</code> | <code>off</code>\n"
-        "<code>/digest at HH:MM</code> (в твоём часовом поясе)"
+        "<code>/digest at HH:MM</code> (у твоєму часовому поясі)"
     )

@@ -8,17 +8,21 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from src.bot.handlers import (
     catchup_cmd,
     chat_cmd,
+    chat_labels,
     digest_cmd,
     free_text,
     login,
+    menu,
     news_cmd,
     news_topics,
+    qrlogin,
     search,
     send,
     settings as settings_handlers,
     start,
     style_cmd,
     todos,
+    track,
 )
 from src.config import settings
 from src.core.notifier import notifier
@@ -41,6 +45,7 @@ async def run_bot(userbot_manager: UserbotManager) -> None:
 
     dp.include_router(start.router)
     dp.include_router(login.router)
+    dp.include_router(qrlogin.router)
     dp.include_router(settings_handlers.router)
     dp.include_router(chat_cmd.router)
     dp.include_router(catchup_cmd.router)
@@ -51,6 +56,10 @@ async def run_bot(userbot_manager: UserbotManager) -> None:
     dp.include_router(style_cmd.router)
     dp.include_router(news_cmd.router)
     dp.include_router(news_topics.router)
+    dp.include_router(chat_labels.router)
+    dp.include_router(track.router)
+    # menu — перед free_text: подписи кнопок приходят обычным текстом
+    dp.include_router(menu.router)
     # ВАЖНО: free_text — самым последним, чтобы команды и FSM перехватили текст раньше
     dp.include_router(free_text.router)
 

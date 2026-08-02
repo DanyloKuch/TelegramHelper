@@ -1,11 +1,13 @@
 """Qdrant embedded в data/qdrant. Коллекция messages пересоздаётся при первом upsert
-с актуальным размером embedding'а — это позволяет менять провайдера без миграций."""
+с актуальным размером embedding'а — это позволяет менять провайдера без миграций.
+
+qdrant_client импортируется и клиент открывается ЛЕНИВО: сам импорт стоит ~60 МБ RSS,
+а открытие сразу на импорте модуля ещё и захватывает файловый лок хранилища —
+из-за этого любой вспомогательный скрипт падал с 'already accessed by another instance'.
+"""
 import asyncio
 import logging
 from dataclasses import dataclass
-
-from qdrant_client import QdrantClient
-from qdrant_client.http import models as qmodels
 
 from src.config import settings
 
@@ -29,11 +31,19 @@ class VectorHit:
 
 class VectorStore:
     def __init__(self) -> None:
-        path = settings.data_dir / "qdrant"
-        path.mkdir(parents=True, exist_ok=True)
-        self._client = QdrantClient(path=str(path))
+        self._path = settings.data_dir / "qdrant"
+        self._client = None
         self._lock = asyncio.Lock()
         self._dim: int | None = None
+
+    def _c(self):
+        """Клиент создаётся при первом реальном обращении, а не при импорте."""
+        if self._client is None:
+            from qdrant_client import QdrantClient
+
+            self._path.mkdir(parents=True, exist_ok=True)
+            self._client = QdrantClient(path=str(self._path))
+        return self._client
 
     async def _ensure_collection(self, dim: int) -> None:
         if self._dim == dim:
@@ -43,22 +53,25 @@ class VectorStore:
                 return
 
             def _check_or_create() -> None:
-                existing = {c.name for c in self._client.get_collections().collections}
+                from qdrant_client.http import models as qmodels
+
+                client = self._c()
+                existing = {c.name for c in client.get_collections().collections}
                 if COLLECTION in existing:
-                    info = self._client.get_collection(COLLECTION)
+                    info = client.get_collection(COLLECTION)
                     actual = info.config.params.vectors.size
                     if actual != dim:
                         logger.warning(
                             "Recreating Qdrant collection %s: dim %d → %d",
                             COLLECTION, actual, dim,
                         )
-                        self._client.delete_collection(COLLECTION)
-                        self._client.create_collection(
+                        client.delete_collection(COLLECTION)
+                        client.create_collection(
                             COLLECTION,
                             vectors_config=qmodels.VectorParams(size=dim, distance=qmodels.Distance.COSINE),
                         )
                 else:
-                    self._client.create_collection(
+                    client.create_collection(
                         COLLECTION,
                         vectors_config=qmodels.VectorParams(size=dim, distance=qmodels.Distance.COSINE),
                     )
@@ -85,7 +98,9 @@ class VectorStore:
         await self._ensure_collection(len(embedding))
 
         def _do() -> None:
-            self._client.upsert(
+            from qdrant_client.http import models as qmodels
+
+            self._c().upsert(
                 collection_name=COLLECTION,
                 points=[
                     qmodels.PointStruct(
@@ -115,16 +130,18 @@ class VectorStore:
     ) -> list[VectorHit]:
         if self._dim is None:
             return []
-        flt = qmodels.Filter(
-            must=[qmodels.FieldCondition(key="user_id", match=qmodels.MatchValue(value=user_id))]
-        )
-        if peer_id is not None:
-            flt.must.append(
-                qmodels.FieldCondition(key="peer_id", match=qmodels.MatchValue(value=peer_id))
-            )
 
-        def _do() -> list[qmodels.ScoredPoint]:
-            return self._client.search(
+        def _do():
+            from qdrant_client.http import models as qmodels
+
+            flt = qmodels.Filter(
+                must=[qmodels.FieldCondition(key="user_id", match=qmodels.MatchValue(value=user_id))]
+            )
+            if peer_id is not None:
+                flt.must.append(
+                    qmodels.FieldCondition(key="peer_id", match=qmodels.MatchValue(value=peer_id))
+                )
+            return self._c().search(
                 collection_name=COLLECTION,
                 query_vector=embedding,
                 limit=limit,

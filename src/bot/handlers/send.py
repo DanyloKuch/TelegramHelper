@@ -34,11 +34,11 @@ class SendStates(StatesGroup):
 
 
 PARSE_SYSTEM = (
-    "Тебе дают свободную фразу-инструкцию вида «скажи Оле, что созвон в 8».\n"
-    "Извлеки получателя и текст сообщения. Сообщение должно быть готово к отправке "
-    "(в первом лице, без префиксов «передай», «скажи»).\n\n"
-    'Возвращай ТОЛЬКО JSON: {"recipient": "...", "message": "..."}.\n'
-    "Если не удаётся определить — верни поля null."
+    "Тобі дають вільну фразу-інструкцію на кшталт «скажи Олі, що созвон о 8».\n"
+    "Витягни отримувача і текст повідомлення. Повідомлення має бути готове до надсилання "
+    "(від першої особи, без префіксів «передай», «скажи»).\n\n"
+    'Повертай ЛИШЕ JSON: {"recipient": "...", "message": "..."}.\n'
+    "Якщо не вдається визначити — поверни поля null."
 )
 
 
@@ -58,10 +58,10 @@ def _parse_json(text: str) -> dict:
 def _confirm_keyboard(action_id: int):
     kb = InlineKeyboardBuilder()
     kb.row(
-        InlineKeyboardButton(text="✅ Отправить", callback_data=f"send:confirm:{action_id}"),
-        InlineKeyboardButton(text="✏ Изменить", callback_data=f"send:edit:{action_id}"),
+        InlineKeyboardButton(text="✅ Надіслати", callback_data=f"send:confirm:{action_id}"),
+        InlineKeyboardButton(text="✏ Змінити", callback_data=f"send:edit:{action_id}"),
     )
-    kb.row(InlineKeyboardButton(text="❌ Отмена", callback_data=f"send:cancel:{action_id}"))
+    kb.row(InlineKeyboardButton(text="❌ Скасувати", callback_data=f"send:cancel:{action_id}"))
     return kb.as_markup()
 
 
@@ -74,7 +74,7 @@ def _candidates_keyboard(candidates: list[ContactCandidate], message_text: str):
             text=f"{c.label()} · {c.score}",
             callback_data=f"send:pick:{c.peer_id}",
         ))
-    kb.row(InlineKeyboardButton(text="❌ Отмена", callback_data="send:cancel:0"))
+    kb.row(InlineKeyboardButton(text="❌ Скасувати", callback_data="send:cancel:0"))
     return kb.as_markup()
 
 
@@ -87,13 +87,13 @@ async def cmd_send(
 ) -> None:
     client = userbot_manager.get_client(message.from_user.id)
     if client is None:
-        await message.answer("Сначала /login.")
+        await message.answer("Спершу /login.")
         return
     raw = (command.args or "").strip()
     if not raw:
         await message.answer(
-            "Использование: <code>/send скажи Оле, что созвон в 8</code>\n"
-            "Или: <code>/send @username | текст сообщения</code>"
+            "Використання: <code>/send скажи Олі, що созвон о 8</code>\n"
+            "Або: <code>/send @username | текст повідомлення</code>"
         )
         return
 
@@ -110,7 +110,7 @@ async def cmd_send(
             owner = await get_or_create_user(session, message.from_user.id)
             provider = await build_provider(session, owner)
         if provider is None:
-            await message.answer("Нужен LLM-ключ для NL-парсинга. Добавь в /settings или используй формат «получатель | текст».")
+            await message.answer("Потрібен LLM-ключ для NL-парсингу. Додай у /settings або використовуй формат «отримувач | текст».")
             return
         parsed_raw = await provider.chat(
             [
@@ -125,7 +125,7 @@ async def cmd_send(
 
     if not recipient_query or not text:
         await message.answer(
-            "Не удалось разобрать запрос. Попробуй формат: <code>/send Оля | текст</code>."
+            "Не вдалося розібрати запит. Спробуй формат: <code>/send Оля | текст</code>."
         )
         return
 
@@ -133,7 +133,7 @@ async def cmd_send(
         owner = await get_or_create_user(session, message.from_user.id)
     candidates = await resolve(client, owner, recipient_query)
     if not candidates:
-        await message.answer(f"Не нашёл контакт «{recipient_query}». Запусти /sync и попробуй снова.")
+        await message.answer(f"Не знайшов контакт «{recipient_query}». Запусти /sync і спробуй знову.")
         return
 
     if len(candidates) == 1 or candidates[0].score >= 90:
@@ -144,7 +144,7 @@ async def cmd_send(
 
     await state.set_data({"send_text": text})
     await message.answer(
-        f"Кому именно отправить «<i>{text[:80]}</i>»?",
+        f"Кому саме надіслати «<i>{text[:80]}</i>»?",
         reply_markup=_candidates_keyboard(candidates, text),
     )
 
@@ -163,7 +163,7 @@ async def _create_and_confirm(
         action = await create_pending_action(session, user_id=owner.id, kind="send_message", payload=payload)
 
     await message.answer(
-        f"🤔 <b>Готов отправить</b>\n\n"
+        f"🤔 <b>Готовий надіслати</b>\n\n"
         f"→ <b>Кому:</b> {label}\n"
         f"→ <b>Текст:</b>\n{text}",
         reply_markup=_confirm_keyboard(action.id),
@@ -176,7 +176,7 @@ async def cb_pick(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     text = data.get("send_text")
     if not text:
-        await callback.answer("Сессия потеряна, попробуй /send заново", show_alert=True)
+        await callback.answer("Сесію втрачено, спробуй /send знову", show_alert=True)
         return
     async with get_session() as session:
         owner = await get_or_create_user(session, callback.from_user.id)
@@ -191,7 +191,7 @@ async def cb_pick(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     if callback.message:
         await callback.message.edit_text(
-            f"🤔 <b>Готов отправить</b>\n\n"
+            f"🤔 <b>Готовий надіслати</b>\n\n"
             f"→ <b>Кому:</b> {label}\n"
             f"→ <b>Текст:</b>\n{text}",
             reply_markup=_confirm_keyboard(action.id),
@@ -208,7 +208,7 @@ async def cb_cancel(callback: CallbackQuery, state: FSMContext) -> None:
             await delete_pending_action(session, action_id)
     await state.clear()
     if callback.message:
-        await callback.message.edit_text("❌ Отправка отменена.")
+        await callback.message.edit_text("❌ Надсилання скасовано.")
     await callback.answer()
 
 
@@ -217,7 +217,7 @@ async def cb_edit(callback: CallbackQuery, state: FSMContext) -> None:
     action_id = int(callback.data.split(":")[2])
     await state.set_state(SendStates.waiting_edit)
     await state.set_data({"action_id": action_id})
-    await callback.message.answer("Введи новый текст сообщения. /cancel — отмена.")
+    await callback.message.answer("Введи новий текст повідомлення. /cancel — скасувати.")
     await callback.answer()
 
 
@@ -225,7 +225,7 @@ async def cb_edit(callback: CallbackQuery, state: FSMContext) -> None:
 async def step_edit(message: Message, state: FSMContext) -> None:
     new_text = (message.text or "").strip()
     if not new_text:
-        await message.answer("Пустой текст. Повтори или /cancel.")
+        await message.answer("Порожній текст. Повтори або /cancel.")
         return
     data = await state.get_data()
     action_id = data.get("action_id")
@@ -233,7 +233,7 @@ async def step_edit(message: Message, state: FSMContext) -> None:
         action = await get_pending_action(session, action_id)
         if action is None:
             await state.clear()
-            await message.answer("Сессия отправки потеряна. Запусти /send заново.")
+            await message.answer("Сесію надсилання втрачено. Запусти /send знову.")
             return
         payload = json.loads(action.payload)
         payload["text"] = new_text
@@ -247,7 +247,7 @@ async def step_edit(message: Message, state: FSMContext) -> None:
 
     await state.clear()
     await message.answer(
-        f"🤔 <b>Готов отправить</b>\n\n→ <b>Кому:</b> {label}\n→ <b>Текст:</b>\n{new_text}",
+        f"🤔 <b>Готовий надіслати</b>\n\n→ <b>Кому:</b> {label}\n→ <b>Текст:</b>\n{new_text}",
         reply_markup=_confirm_keyboard(action_id),
     )
 
@@ -257,13 +257,13 @@ async def cb_confirm(callback: CallbackQuery, userbot_manager: UserbotManager) -
     action_id = int(callback.data.split(":")[2])
     client = userbot_manager.get_client(callback.from_user.id)
     if client is None:
-        await callback.answer("Сначала /login", show_alert=True)
+        await callback.answer("Спершу /login", show_alert=True)
         return
 
     async with get_session() as session:
         action = await get_pending_action(session, action_id)
         if action is None:
-            await callback.answer("Действие не найдено или уже выполнено", show_alert=True)
+            await callback.answer("Дію не знайдено або вже виконано", show_alert=True)
             return
         payload = json.loads(action.payload)
         peer_id = payload["peer_id"]
@@ -275,11 +275,11 @@ async def cb_confirm(callback: CallbackQuery, userbot_manager: UserbotManager) -
         await client.send_message(entity, text)
     except Exception as e:
         logger.exception("send_message failed")
-        await callback.answer("Ошибка при отправке", show_alert=True)
+        await callback.answer("Помилка під час надсилання", show_alert=True)
         if callback.message:
-            await callback.message.edit_text(f"❌ Не удалось отправить: <code>{e}</code>")
+            await callback.message.edit_text(f"❌ Не вдалося надіслати: <code>{e}</code>")
         return
 
     if callback.message:
-        await callback.message.edit_text("✅ Сообщение отправлено.")
-    await callback.answer("Отправлено")
+        await callback.message.edit_text("✅ Повідомлення надіслано.")
+    await callback.answer("Надіслано")

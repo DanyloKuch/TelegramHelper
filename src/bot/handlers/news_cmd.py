@@ -29,14 +29,14 @@ HOURS_RE = re.compile(r"--hours\s*=?\s*(\d+)")
 async def cmd_news(message: Message, command: CommandObject, userbot_manager: UserbotManager) -> None:
     client = userbot_manager.get_client(message.from_user.id)
     if client is None:
-        await message.answer("Сначала /login.")
+        await message.answer("Спершу /login.")
         return
 
     raw = (command.args or "").strip()
     if not raw:
         await message.answer(
-            "Использование: <code>/news тема [--hours=24]</code>\n"
-            "Например: <code>/news AI и регулирование --hours=48</code>"
+            "Використання: <code>/news тема [--hours=24]</code>\n"
+            "Наприклад: <code>/news AI та регулювання --hours=48</code>"
         )
         return
 
@@ -53,10 +53,10 @@ async def cmd_news(message: Message, command: CommandObject, userbot_manager: Us
 
     topic = raw
     if not topic:
-        await message.answer("Укажи тему после команды.")
+        await message.answer("Вкажи тему після команди.")
         return
 
-    await message.answer(f"📰 Готовлю дайджест по «<i>{topic}</i>» за последние {hours}ч…")
+    await message.answer(f"📰 Готую дайджест за «<i>{topic}</i>» за останні {hours}год…")
     text = await build_news_digest(client, message.from_user.id, topic, hours=hours)
     await message.answer(text, disable_web_page_preview=True)
 
@@ -65,7 +65,7 @@ async def cmd_news(message: Message, command: CommandObject, userbot_manager: Us
 async def cmd_news_channels(message: Message, userbot_manager: UserbotManager) -> None:
     client = userbot_manager.get_client(message.from_user.id)
     if client is None:
-        await message.answer("Сначала /login.")
+        await message.answer("Спершу /login.")
         return
 
     async with get_session() as session:
@@ -73,15 +73,15 @@ async def cmd_news_channels(message: Message, userbot_manager: UserbotManager) -
         channels = await list_contacts(session, owner, kinds=("channel",))
 
     if not channels:
-        await message.answer("Каналов в БД нет. Запусти /sync.")
+        await message.answer("Каналів у БД немає. Запусти /sync.")
         return
 
     marked = sum(1 for c in channels if c.is_news_source)
     await message.answer(
-        f"📰 <b>Каналы для /news</b>\n\n"
-        f"Всего каналов: {len(channels)}\n"
-        f"Помечено как источники: <b>{marked}</b>\n\n"
-        "Тапни по каналу, чтобы переключить статус. Если ни один не помечен — /news берёт все."
+        f"📰 <b>Канали для /news</b>\n\n"
+        f"Усього каналів: {len(channels)}\n"
+        f"Позначено як джерела: <b>{marked}</b>\n\n"
+        "Тапни по каналу, щоб перемкнути статус. Якщо жоден не позначений — /news бере всі."
     )
 
     # выводим пачками по 25 кнопок (Telegram-лимит ~100 кнопок в одном сообщении, но 1 строка ≤ 8)
@@ -92,7 +92,7 @@ async def cmd_news_channels(message: Message, userbot_manager: UserbotManager) -
             mark = "✅" if c.is_news_source else "▫"
             label = f"{mark} {c.display_name[:40]}"
             kb.row(InlineKeyboardButton(text=label, callback_data=f"news:tog:{c.peer_id}"))
-        await message.answer(f"Список ({i + 1}–{i + len(channels[i:i+chunk])}):", reply_markup=kb.as_markup())
+        await message.answer(f"Перелік ({i + 1}–{i + len(channels[i:i+chunk])}):", reply_markup=kb.as_markup())
 
 
 @router.callback_query(F.data.startswith("news:tog:"))
@@ -104,7 +104,7 @@ async def cb_toggle(callback: CallbackQuery) -> None:
         contacts = await list_contacts(session, owner, kinds=("channel",))
         target = next((c for c in contacts if c.peer_id == peer_id), None)
         if target is None:
-            await callback.answer("Канал не найден", show_alert=True)
+            await callback.answer("Канал не знайдено", show_alert=True)
             return
         new_value = not target.is_news_source
         await set_news_source(session, owner, peer_id, new_value)
@@ -123,4 +123,4 @@ async def cb_toggle(callback: CallbackQuery) -> None:
             new_kb.append(new_row)
         from aiogram.types import InlineKeyboardMarkup
         await callback.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=new_kb))
-    await callback.answer("Включено" if new_value else "Выключено")
+    await callback.answer("Увімкнено" if new_value else "Вимкнено")

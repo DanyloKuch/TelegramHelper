@@ -19,7 +19,7 @@ router.callback_query.filter(OwnerOnly())
 
 
 def _format(c, tz_name: str) -> str:
-    who = "Я" if c.direction == "mine" else (c.peer_name or "Они")
+    who = "Я" if c.direction == "mine" else (c.peer_name or "Вони")
     deadline = fmt_local(c.deadline_at, tz_name)
     return f"<b>{who}</b> · {c.text} (до {deadline})"
 
@@ -27,8 +27,8 @@ def _format(c, tz_name: str) -> str:
 def _kb(commitment_id: int):
     kb = InlineKeyboardBuilder()
     kb.row(
-        InlineKeyboardButton(text="✅ Выполнено", callback_data=f"todo:done:{commitment_id}"),
-        InlineKeyboardButton(text="🚫 Отменить", callback_data=f"todo:cancel:{commitment_id}"),
+        InlineKeyboardButton(text="✅ Виконано", callback_data=f"todo:done:{commitment_id}"),
+        InlineKeyboardButton(text="🚫 Скасувати", callback_data=f"todo:cancel:{commitment_id}"),
     )
     return kb.as_markup()
 
@@ -41,10 +41,10 @@ async def cmd_todos(message: Message) -> None:
         tz_name = owner.settings.timezone
 
     if not items:
-        await message.answer("Открытых обязательств нет 🎉")
+        await message.answer("Відкритих зобов'язань немає 🎉")
         return
 
-    await message.answer(f"📋 Открытых обязательств: <b>{len(items)}</b>")
+    await message.answer(f"📋 Відкритих зобов'язань: <b>{len(items)}</b>")
     for c in items[:30]:
         await message.answer(_format(c, tz_name), reply_markup=_kb(c.id))
 
@@ -65,5 +65,5 @@ async def cb_cancel(callback: CallbackQuery) -> None:
     async with get_session() as session:
         await update_commitment_status(session, cid, "cancelled")
     if callback.message:
-        await callback.message.edit_text(callback.message.html_text + "\n\n🚫 Отменено")
+        await callback.message.edit_text(callback.message.html_text + "\n\n🚫 Скасовано")
     await callback.answer()

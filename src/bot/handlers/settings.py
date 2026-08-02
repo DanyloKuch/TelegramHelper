@@ -14,8 +14,8 @@ from src.config import LLMDefaults
 from src.core.timeutil import TZ_PRESETS, is_valid_tz, tz_short
 from src.db.repo import get_api_key, get_or_create_user, upsert_api_key
 from src.db.session import get_session
-from src.llm.gemini_provider import GeminiProvider
-from src.llm.openai_provider import OpenAIProvider
+# Провайдеры импортируются внутри обработчиков ввода ключа: сверху они тянули бы
+# оба SDK в память при старте бота.
 
 
 router = Router(name="settings")
@@ -40,37 +40,37 @@ async def _render_menu(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
         gemini_key = await get_api_key(session, owner, "gemini")
 
     text = (
-        "⚙ <b>Настройки</b>\n\n"
-        f"🌍 Часовой пояс: <b>{tz_short(s.timezone)}</b>\n"
-        f"🔄 Авто-ответ: {_check(s.auto_reply_enabled)} (кулдаун {s.auto_reply_cooldown_min}м)\n"
+        "⚙ <b>Налаштування</b>\n\n"
+        f"🌍 Часовий пояс: <b>{tz_short(s.timezone)}</b>\n"
+        f"🔄 Авто-відповідь: {_check(s.auto_reply_enabled)} (кулдаун {s.auto_reply_cooldown_min}хв)\n"
         f"☀ Дайджест: {_check(s.digest_enabled)} ({s.digest_time})\n"
-        f"⏰ Напоминания: {_check(s.reminders_enabled)} (за {s.reminder_lead_hours}ч; просрочки {_check(s.reminder_overdue_enabled)})\n"
-        f"📰 Новости: {_check(s.news_enabled)} (окно {s.news_window_hours}ч)\n"
-        f"🛡 Игнорировать архив: {_check(s.ignore_archived)}\n"
-        f"🤖 LLM: <b>{s.llm_provider}</b> · {'тяжёлая' if s.use_heavy_model else 'лёгкая'}\n"
-        f"🎤 Транскрипция: <b>{s.transcription_mode}</b>\n"
-        f"🔑 Ключи: OpenAI {_check(bool(openai_key))} · Gemini {_check(bool(gemini_key))}\n\n"
-        "<i>Тапни раздел, чтобы открыть его настройки и описание.</i>"
+        f"⏰ Нагадування: {_check(s.reminders_enabled)} (за {s.reminder_lead_hours}год; протермінування {_check(s.reminder_overdue_enabled)})\n"
+        f"📰 Новини: {_check(s.news_enabled)} (вікно {s.news_window_hours}год)\n"
+        f"🛡 Ігнорувати архів: {_check(s.ignore_archived)}\n"
+        f"🤖 LLM: <b>{s.llm_provider}</b> · {'важка' if s.use_heavy_model else 'легка'}\n"
+        f"🎤 Транскрипція: <b>{s.transcription_mode}</b>\n"
+        f"🔑 Ключі: OpenAI {_check(bool(openai_key))} · Gemini {_check(bool(gemini_key))}\n\n"
+        "<i>Тапни розділ, щоб відкрити його налаштування й опис.</i>"
     )
     kb = InlineKeyboardBuilder()
     kb.row(
-        InlineKeyboardButton(text="🌍 Часовой пояс", callback_data="set:sec:tz"),
-        InlineKeyboardButton(text="🔄 Авто-ответ", callback_data="set:sec:auto_reply"),
+        InlineKeyboardButton(text="🌍 Часовий пояс", callback_data="set:sec:tz"),
+        InlineKeyboardButton(text="🔄 Авто-відповідь", callback_data="set:sec:auto_reply"),
     )
     kb.row(
         InlineKeyboardButton(text="☀ Дайджест", callback_data="set:sec:digest"),
-        InlineKeyboardButton(text="⏰ Напоминания", callback_data="set:sec:reminders"),
+        InlineKeyboardButton(text="⏰ Нагадування", callback_data="set:sec:reminders"),
     )
     kb.row(
-        InlineKeyboardButton(text="📰 Новости", callback_data="set:sec:news"),
-        InlineKeyboardButton(text="🛡 Приватность", callback_data="set:sec:privacy"),
+        InlineKeyboardButton(text="📰 Новини", callback_data="set:sec:news"),
+        InlineKeyboardButton(text="🛡 Приватність", callback_data="set:sec:privacy"),
     )
     kb.row(
         InlineKeyboardButton(text="🤖 LLM", callback_data="set:sec:llm"),
-        InlineKeyboardButton(text="🎤 Транскрипция", callback_data="set:sec:transcription"),
+        InlineKeyboardButton(text="🎤 Транскрипція", callback_data="set:sec:transcription"),
     )
-    kb.row(InlineKeyboardButton(text="🔑 API-ключи", callback_data="set:sec:keys"))
-    kb.row(InlineKeyboardButton(text="❌ Закрыть", callback_data="set:close"))
+    kb.row(InlineKeyboardButton(text="🔑 API-ключі", callback_data="set:sec:keys"))
+    kb.row(InlineKeyboardButton(text="❌ Закрити", callback_data="set:close"))
     return text, kb.as_markup()
 
 
@@ -119,7 +119,7 @@ BOOL_KEYS = {
 
 CHOICE_KEYS = {
     "llm_provider": {"openai", "gemini"},
-    "transcription_mode": {"local", "api", "hybrid"},
+    "transcription_mode": {"local", "api", "modal", "hybrid"},
     "auto_reply_mode": {"static", "smart"},
 }
 
@@ -134,7 +134,7 @@ NUMERIC_KEYS = {
 async def cb_toggle(callback: CallbackQuery) -> None:
     key = callback.data.split(":", 2)[2]
     if key not in BOOL_KEYS:
-        await callback.answer("Неизвестный переключатель", show_alert=True)
+        await callback.answer("Невідомий перемикач", show_alert=True)
         return
     async with get_session() as session:
         owner = await get_or_create_user(session, callback.from_user.id)
@@ -149,7 +149,7 @@ async def cb_choose(callback: CallbackQuery) -> None:
     _, _, key, value = callback.data.split(":", 3)
     if key in CHOICE_KEYS:
         if value not in CHOICE_KEYS[key]:
-            await callback.answer("Невалидное значение", show_alert=True)
+            await callback.answer("Невалідне значення", show_alert=True)
             return
         async with get_session() as session:
             owner = await get_or_create_user(session, callback.from_user.id)
@@ -158,13 +158,13 @@ async def cb_choose(callback: CallbackQuery) -> None:
         try:
             ivalue = max(0, int(value))
         except ValueError:
-            await callback.answer("Невалидное число", show_alert=True)
+            await callback.answer("Невалідне число", show_alert=True)
             return
         async with get_session() as session:
             owner = await get_or_create_user(session, callback.from_user.id)
             setattr(owner.settings, key, ivalue)
     else:
-        await callback.answer("Неизвестное поле", show_alert=True)
+        await callback.answer("Невідоме поле", show_alert=True)
         return
     await callback.answer("Готово")
     await _refresh_section(callback, _section_for_key(key))
@@ -208,7 +208,7 @@ async def cb_open_section(callback: CallbackQuery) -> None:
 
 
 def _back_row():
-    return [InlineKeyboardButton(text="← Меню настроек", callback_data="set:menu")]
+    return [InlineKeyboardButton(text="← Меню налаштувань", callback_data="set:menu")]
 
 
 async def _render_section(telegram_id: int, section: str) -> tuple[str, InlineKeyboardMarkup]:
@@ -221,24 +221,24 @@ async def _render_section(telegram_id: int, section: str) -> tuple[str, InlineKe
     kb = InlineKeyboardBuilder()
 
     if section == "auto_reply":
-        mode_label = "🤖 умный (LLM в твоём стиле)" if s.auto_reply_mode == "smart" else "📝 заготовленный текст"
+        mode_label = "🤖 розумний (LLM у твоєму стилі)" if s.auto_reply_mode == "smart" else "📝 заготовлений текст"
         snippet = (s.auto_reply_text or "").strip().replace("\n", " ")
         if len(snippet) > 80:
             snippet = snippet[:77] + "…"
         text = (
-            "🔄 <b>Авто-ответ</b>\n\n"
-            "Когда я <b>оффлайн</b> и приходит личное сообщение — бот отправляет ответ.\n"
-            "Только ЛС, не группы и не боты. Один ответ на контакт раз в кулдаун.\n\n"
-            "<b>Режимы</b>:\n"
-            "• <b>заготовленный</b> — отправляется один и тот же текст (ниже).\n"
-            "• <b>умный</b> — LLM пишет короткий ответ в твоём стиле, опираясь на контекст переписки.\n\n"
-            f"Статус: <b>{'ВКЛ' if s.auto_reply_enabled else 'ВЫКЛ'}</b>\n"
+            "🔄 <b>Авто-відповідь</b>\n\n"
+            "Коли я <b>офлайн</b> і надходить особисте повідомлення — бот надсилає відповідь.\n"
+            "Тільки ЛС, не групи й не боти. Одна відповідь на контакт раз на кулдаун.\n\n"
+            "<b>Режими</b>:\n"
+            "• <b>заготовлений</b> — надсилається один і той самий текст (нижче).\n"
+            "• <b>розумний</b> — LLM пише коротку відповідь у твоєму стилі, опираючись на контекст листування.\n\n"
+            f"Статус: <b>{'УВІМК' if s.auto_reply_enabled else 'ВИМК'}</b>\n"
             f"Режим: <b>{mode_label}</b>\n"
-            f"Кулдаун: <b>{s.auto_reply_cooldown_min} мин</b>\n"
+            f"Кулдаун: <b>{s.auto_reply_cooldown_min} хв</b>\n"
             f"Текст заготовки:\n<i>«{snippet}»</i>"
         )
         kb.row(InlineKeyboardButton(
-            text=f"{_check(s.auto_reply_enabled)} Включить авто-ответ",
+            text=f"{_check(s.auto_reply_enabled)} Увімкнути авто-відповідь",
             callback_data="set:tog:auto_reply_enabled",
         ))
         kb.row(
@@ -247,17 +247,17 @@ async def _render_section(telegram_id: int, section: str) -> tuple[str, InlineKe
                 callback_data="set:choose:auto_reply_mode:static",
             ),
             InlineKeyboardButton(
-                text=("• " if s.auto_reply_mode == "smart" else "") + "🤖 Умный",
+                text=("• " if s.auto_reply_mode == "smart" else "") + "🤖 Розумний",
                 callback_data="set:choose:auto_reply_mode:smart",
             ),
         )
         kb.row(InlineKeyboardButton(
-            text="✏ Изменить текст заготовки",
+            text="✏ Змінити текст заготовки",
             callback_data="set:input:auto_reply_text",
         ))
         kb.row(*[
             InlineKeyboardButton(
-                text=("• " if s.auto_reply_cooldown_min == m else "") + f"{m}м",
+                text=("• " if s.auto_reply_cooldown_min == m else "") + f"{m}хв",
                 callback_data=f"set:choose:auto_reply_cooldown_min:{m}",
             ) for m in (5, 15, 30, 60)
         ])
@@ -265,41 +265,41 @@ async def _render_section(telegram_id: int, section: str) -> tuple[str, InlineKe
 
     elif section == "digest":
         text = (
-            "☀ <b>Утренний дайджест</b>\n\n"
-            "Раз в сутки в указанное время получаю сводку: что произошло за ночь, кто ждёт ответа, "
-            "горящие обещания и сколько было авто-ответов.\n\n"
-            f"Статус: <b>{'ВКЛ' if s.digest_enabled else 'ВЫКЛ'}</b>\n"
-            f"Время: <b>{s.digest_time}</b> · {tz_short(s.timezone)}\n\n"
-            "Часовой пояс — отдельный раздел в /settings.\n"
-            "Для разовой сводки — команда /digest"
+            "☀ <b>Ранковий дайджест</b>\n\n"
+            "Раз на добу у вказаний час отримую зведення: що сталося за ніч, хто чекає відповіді, "
+            "гарячі обіцянки і скільки було авто-відповідей.\n\n"
+            f"Статус: <b>{'УВІМК' if s.digest_enabled else 'ВИМК'}</b>\n"
+            f"Час: <b>{s.digest_time}</b> · {tz_short(s.timezone)}\n\n"
+            "Часовий пояс — окремий розділ у /settings.\n"
+            "Для разового зведення — команда /digest"
         )
         kb.row(InlineKeyboardButton(
-            text=f"{_check(s.digest_enabled)} Включить дайджест",
+            text=f"{_check(s.digest_enabled)} Увімкнути дайджест",
             callback_data="set:tog:digest_enabled",
         ))
-        kb.row(InlineKeyboardButton(text=f"⏰ Время: {s.digest_time}", callback_data="set:input:digest_time"))
+        kb.row(InlineKeyboardButton(text=f"⏰ Час: {s.digest_time}", callback_data="set:input:digest_time"))
         kb.row(*_back_row())
 
     elif section == "reminders":
         text = (
-            "⏰ <b>Напоминания о дедлайнах</b>\n\n"
-            "Бот подгружает обещания из переписок (см. /todos и кнопку «Задачи» в /chat) и пинает, "
-            "когда дедлайн близок или просрочен.\n\n"
-            f"Статус: <b>{'ВКЛ' if s.reminders_enabled else 'ВЫКЛ'}</b>\n"
-            f"Заранее за: <b>{s.reminder_lead_hours} ч</b>\n"
-            f"Алерт о просрочках: <b>{'ВКЛ' if s.reminder_overdue_enabled else 'ВЫКЛ'}</b>"
+            "⏰ <b>Нагадування про дедлайни</b>\n\n"
+            "Бот витягує обіцянки з листування (див. /todos і кнопку «Задачі» в /chat) і штовхає, "
+            "коли дедлайн близько або протермінований.\n\n"
+            f"Статус: <b>{'УВІМК' if s.reminders_enabled else 'ВИМК'}</b>\n"
+            f"Заздалегідь за: <b>{s.reminder_lead_hours} год</b>\n"
+            f"Алерт про протермінування: <b>{'УВІМК' if s.reminder_overdue_enabled else 'ВИМК'}</b>"
         )
         kb.row(InlineKeyboardButton(
-            text=f"{_check(s.reminders_enabled)} Включить напоминания",
+            text=f"{_check(s.reminders_enabled)} Увімкнути нагадування",
             callback_data="set:tog:reminders_enabled",
         ))
         kb.row(InlineKeyboardButton(
-            text=f"{_check(s.reminder_overdue_enabled)} Алерт при просрочке",
+            text=f"{_check(s.reminder_overdue_enabled)} Алерт при протермінуванні",
             callback_data="set:tog:reminder_overdue_enabled",
         ))
         kb.row(*[
             InlineKeyboardButton(
-                text=("• " if s.reminder_lead_hours == h else "") + f"{h}ч",
+                text=("• " if s.reminder_lead_hours == h else "") + f"{h}год",
                 callback_data=f"set:choose:reminder_lead_hours:{h}",
             ) for h in (1, 2, 4, 12, 24)
         ])
@@ -307,31 +307,31 @@ async def _render_section(telegram_id: int, section: str) -> tuple[str, InlineKe
 
     elif section == "news":
         text = (
-            "📰 <b>Новости</b>\n\n"
-            "Команда <code>/news тема</code> ищет посты в твоих подписанных каналах за последние N часов и "
-            "собирает структурированный обзор.\n\n"
-            "<b>Авто-новости</b> (этот тогглер): если включено, каждое утро в указанное время бот шлёт "
-            "дайджест по каждой теме из <b>/news_topics</b>.\n\n"
-            "Чтобы ограничить выборку конкретными каналами — /news_channels.\n\n"
-            f"Авто-новости: <b>{'ВКЛ' if s.news_enabled else 'ВЫКЛ'}</b>\n"
-            f"Время отправки: <b>{s.news_digest_time}</b> · {tz_short(s.timezone)}\n"
-            f"Окно по умолчанию: <b>{s.news_window_hours} ч</b>"
+            "📰 <b>Новини</b>\n\n"
+            "Команда <code>/news тема</code> шукає пости у твоїх підписаних каналах за останні N годин і "
+            "збирає структурований огляд.\n\n"
+            "<b>Авто-новини</b> (цей перемикач): якщо увімкнено, щоранку у вказаний час бот надсилає "
+            "дайджест за кожною темою з <b>/news_topics</b>.\n\n"
+            "Щоб обмежити вибірку конкретними каналами — /news_channels.\n\n"
+            f"Авто-новини: <b>{'УВІМК' if s.news_enabled else 'ВИМК'}</b>\n"
+            f"Час надсилання: <b>{s.news_digest_time}</b> · {tz_short(s.timezone)}\n"
+            f"Вікно за замовчуванням: <b>{s.news_window_hours} год</b>"
         )
         kb.row(InlineKeyboardButton(
-            text=f"{_check(s.news_enabled)} Включить авто-новости",
+            text=f"{_check(s.news_enabled)} Увімкнути авто-новини",
             callback_data="set:tog:news_enabled",
         ))
         kb.row(InlineKeyboardButton(
-            text=f"⏰ Время: {s.news_digest_time}",
+            text=f"⏰ Час: {s.news_digest_time}",
             callback_data="set:input:news_time",
         ))
         kb.row(*[
             InlineKeyboardButton(
-                text=("• " if s.news_window_hours == h else "") + f"{h}ч",
+                text=("• " if s.news_window_hours == h else "") + f"{h}год",
                 callback_data=f"set:choose:news_window_hours:{h}",
             ) for h in (6, 12, 24, 48, 72)
         ])
-        kb.row(InlineKeyboardButton(text="📋 Темы → /news_topics", callback_data="set:noop:news_topics"))
+        kb.row(InlineKeyboardButton(text="📋 Теми → /news_topics", callback_data="set:noop:news_topics"))
         kb.row(*_back_row())
 
     elif section == "llm":
@@ -343,11 +343,11 @@ async def _render_section(telegram_id: int, section: str) -> tuple[str, InlineKe
         )
         text = (
             "🤖 <b>LLM-провайдер</b>\n\n"
-            "Кто отвечает на запросы и пишет черновики/саммари. Лёгкая модель — для рутины, "
-            "тяжёлая — для длинных переписок и сложного анализа.\n\n"
+            "Хто відповідає на запити й пише чернетки/самарі. Легка модель — для рутини, "
+            "важка — для довгих листувань і складного аналізу.\n\n"
             f"Провайдер: <b>{s.llm_provider}</b>\n"
-            f"Режим: <b>{'тяжёлая' if s.use_heavy_model else 'лёгкая'}</b>\n"
-            f"Активная модель: <code>{active}</code>"
+            f"Режим: <b>{'важка' if s.use_heavy_model else 'легка'}</b>\n"
+            f"Активна модель: <code>{active}</code>"
         )
         kb.row(
             InlineKeyboardButton(
@@ -360,20 +360,22 @@ async def _render_section(telegram_id: int, section: str) -> tuple[str, InlineKe
             ),
         )
         kb.row(InlineKeyboardButton(
-            text=f"{_check(s.use_heavy_model)} Тяжёлая модель",
+            text=f"{_check(s.use_heavy_model)} Важка модель",
             callback_data="set:tog:use_heavy_model",
         ))
         kb.row(*_back_row())
 
     elif section == "transcription":
         text = (
-            "🎤 <b>Транскрипция голосовых и аудио</b>\n\n"
-            "<b>local</b> — faster-whisper на твоей машине (бесплатно, приватно, нужны ресурсы).\n"
-            "<b>api</b> — OpenAI Whisper (~$0.006/мин, нужен OpenAI key, аудио уходит в OpenAI).\n"
-            "<b>hybrid</b> — local, fallback в API при ошибке.\n\n"
-            f"Текущий: <b>{s.transcription_mode}</b>"
+            "🎤 <b>Транскрипція голосових і аудіо</b>\n\n"
+            "<b>local</b> — faster-whisper на твоїй машині (безкоштовно, приватно, потрібні ресурси).\n"
+            "<b>api</b> — OpenAI Whisper (~$0.006/хв, потрібен OpenAI key, аудіо йде в OpenAI).\n"
+            "<b>modal</b> — свій Whisper large-v3 на Modal GPU: найточніший, але аудіо йде "
+            "в хмару і холодний старт займає час.\n"
+            "<b>hybrid</b> — local, при помилці запасний шлях (спершу modal, потім OpenAI).\n\n"
+            f"Поточний: <b>{s.transcription_mode}</b>"
         )
-        for mode in ("local", "api", "hybrid"):
+        for mode in ("local", "api", "modal", "hybrid"):
             kb.row(InlineKeyboardButton(
                 text=("• " if s.transcription_mode == mode else "") + mode,
                 callback_data=f"set:choose:transcription_mode:{mode}",
@@ -382,13 +384,13 @@ async def _render_section(telegram_id: int, section: str) -> tuple[str, InlineKe
 
     elif section == "tz":
         text = (
-            "🌍 <b>Часовой пояс</b>\n\n"
-            "От него отталкиваются:\n"
-            "• время утреннего дайджеста и авто-новостей\n"
-            "• отображение дедлайнов в /todos и напоминаниях\n"
-            "• временные метки в дайджестах\n\n"
-            f"Сейчас: <b>{tz_short(s.timezone)}</b>\n\n"
-            "Тапни пресет ниже или введи свой IANA-таймзону кнопкой «Другой…»."
+            "🌍 <b>Часовий пояс</b>\n\n"
+            "Від нього залежать:\n"
+            "• час ранкового дайджесту й авто-новин\n"
+            "• відображення дедлайнів у /todos і нагадуваннях\n"
+            "• часові позначки в дайджестах\n\n"
+            f"Зараз: <b>{tz_short(s.timezone)}</b>\n\n"
+            "Тапни пресет нижче або введи свою IANA-таймзону кнопкою «Інший…»."
         )
         # пресеты по 2 в ряд
         for i in range(0, len(TZ_PRESETS), 2):
@@ -397,29 +399,29 @@ async def _render_section(telegram_id: int, section: str) -> tuple[str, InlineKe
                 mark = "• " if s.timezone == tz else ""
                 buttons.append(InlineKeyboardButton(text=mark + tz, callback_data=f"set:tz:{tz}"))
             kb.row(*buttons)
-        kb.row(InlineKeyboardButton(text="✏ Другой…", callback_data="set:input:timezone"))
+        kb.row(InlineKeyboardButton(text="✏ Інший…", callback_data="set:input:timezone"))
         kb.row(*_back_row())
 
     elif section == "privacy":
         text = (
-            "🛡 <b>Приватность и видимость</b>\n\n"
-            "Что бот <b>смотрит и обрабатывает</b> по умолчанию.\n\n"
-            "<b>Игнорировать архив</b> — чаты в архиве Telegram не подгружаются ни в /chat, "
-            "ни в /search, ни в /news, ни в авто-ответ. Включено по умолчанию.\n\n"
-            f"Игнорировать архив: <b>{'ВКЛ' if s.ignore_archived else 'ВЫКЛ'}</b>\n\n"
-            "<i>Изменения вступают в силу для следующих запросов. Архивный статус подтягивается "
+            "🛡 <b>Приватність і видимість</b>\n\n"
+            "Що бот <b>дивиться й обробляє</b> за замовчуванням.\n\n"
+            "<b>Ігнорувати архів</b> — чати в архіві Telegram не підгружаються ні в /chat, "
+            "ні в /search, ні в /news, ні в авто-відповідь. Увімкнено за замовчуванням.\n\n"
+            f"Ігнорувати архів: <b>{'УВІМК' if s.ignore_archived else 'ВИМК'}</b>\n\n"
+            "<i>Зміни діють для наступних запитів. Архівний статус підтягується "
             "при /sync.</i>"
         )
         kb.row(InlineKeyboardButton(
-            text=f"{_check(s.ignore_archived)} Игнорировать архив",
+            text=f"{_check(s.ignore_archived)} Ігнорувати архів",
             callback_data="set:tog:ignore_archived",
         ))
         kb.row(*_back_row())
 
     elif section == "keys":
         text = (
-            "🔑 <b>API-ключи</b>\n\n"
-            "Хранятся зашифрованными (Fernet). Можно перезаписать в любой момент.\n\n"
+            "🔑 <b>API-ключі</b>\n\n"
+            "Зберігаються зашифрованими (Fernet). Можна перезаписати будь-коли.\n\n"
             f"OpenAI: {_check(bool(openai_key))}\n"
             f"Gemini: {_check(bool(gemini_key))}"
         )
@@ -430,7 +432,7 @@ async def _render_section(telegram_id: int, section: str) -> tuple[str, InlineKe
         kb.row(*_back_row())
 
     else:
-        text = "Раздел не найден."
+        text = "Розділ не знайдено."
         kb.row(*_back_row())
 
     return text, kb.as_markup()
@@ -442,7 +444,7 @@ async def _render_section(telegram_id: int, section: str) -> tuple[str, InlineKe
 async def cb_input_openai(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(SettingsStates.waiting_openai_key)
     await callback.message.answer(
-        "Пришли OpenAI API key (начинается с <code>sk-</code>). Проверю и сохраню. /cancel — отмена."
+        "Надішли OpenAI API key (починається з <code>sk-</code>). Перевірю і збережу. /cancel — скасувати."
     )
     await callback.answer()
 
@@ -451,7 +453,7 @@ async def cb_input_openai(callback: CallbackQuery, state: FSMContext) -> None:
 async def cb_input_gemini(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(SettingsStates.waiting_gemini_key)
     await callback.message.answer(
-        "Пришли Gemini API key с <code>aistudio.google.com</code>. Проверю и сохраню. /cancel — отмена."
+        "Надішли Gemini API key з <code>aistudio.google.com</code>. Перевірю і збережу. /cancel — скасувати."
     )
     await callback.answer()
 
@@ -459,7 +461,7 @@ async def cb_input_gemini(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data == "set:input:digest_time")
 async def cb_input_digest(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(SettingsStates.waiting_digest_time)
-    await callback.message.answer("Введи время в формате <code>HH:MM</code> (UTC). /cancel — отмена.")
+    await callback.message.answer("Введи час у форматі <code>HH:MM</code> (UTC). /cancel — скасувати.")
     await callback.answer()
 
 
@@ -467,8 +469,8 @@ async def cb_input_digest(callback: CallbackQuery, state: FSMContext) -> None:
 async def cb_input_auto_reply(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(SettingsStates.waiting_auto_reply_text)
     await callback.message.answer(
-        "Пришли новый текст автоответа. Будет отправляться, когда ты оффлайн "
-        "(в режиме «заготовка»). /cancel — отмена."
+        "Надішли новий текст авто-відповіді. Надсилатиметься, коли ти офлайн "
+        "(у режимі «заготовка»). /cancel — скасувати."
     )
     await callback.answer()
 
@@ -477,21 +479,21 @@ async def cb_input_auto_reply(callback: CallbackQuery, state: FSMContext) -> Non
 async def cb_input_news_time(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(SettingsStates.waiting_news_time)
     await callback.message.answer(
-        "Введи время утренних авто-новостей в <code>HH:MM</code> (UTC). /cancel — отмена."
+        "Введи час ранкових авто-новин у <code>HH:MM</code> (UTC). /cancel — скасувати."
     )
     await callback.answer()
 
 
 @router.callback_query(F.data == "set:noop:news_topics")
 async def cb_noop_news_topics(callback: CallbackQuery) -> None:
-    await callback.answer("Открой /news_topics в меню команд", show_alert=True)
+    await callback.answer("Відкрий /news_topics у меню команд", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("set:tz:"))
 async def cb_pick_tz(callback: CallbackQuery) -> None:
     tz_value = callback.data[len("set:tz:"):]
     if not is_valid_tz(tz_value):
-        await callback.answer("Неизвестный TZ", show_alert=True)
+        await callback.answer("Невідомий TZ", show_alert=True)
         return
     async with get_session() as session:
         owner = await get_or_create_user(session, callback.from_user.id)
@@ -504,8 +506,8 @@ async def cb_pick_tz(callback: CallbackQuery) -> None:
 async def cb_input_tz(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(SettingsStates.waiting_timezone)
     await callback.message.answer(
-        "Введи название часового пояса в формате IANA, например <code>Europe/Moscow</code> или "
-        "<code>Asia/Tashkent</code>. /cancel — отмена."
+        "Введи назву часового поясу у форматі IANA, наприклад <code>Europe/Kyiv</code> або "
+        "<code>Europe/Warsaw</code>. /cancel — скасувати."
     )
     await callback.answer()
 
@@ -514,83 +516,87 @@ async def cb_input_tz(callback: CallbackQuery, state: FSMContext) -> None:
 async def step_openai_key(message: Message, state: FSMContext) -> None:
     key = (message.text or "").strip()
     if not key:
-        await message.answer("Пустой ключ. Повтори или /cancel.")
+        await message.answer("Порожній ключ. Повтори або /cancel.")
         return
     try:
         await message.delete()
     except Exception:
         pass
+    from src.llm.openai_provider import OpenAIProvider
+
     if not await OpenAIProvider(key).validate_key():
-        await message.answer("❌ Ключ не работает. Повтори или /cancel.")
+        await message.answer("❌ Ключ не працює. Повтори або /cancel.")
         return
     async with get_session() as session:
         owner = await get_or_create_user(session, message.from_user.id)
         await upsert_api_key(session, owner, "openai", key)
     await state.clear()
-    await message.answer("✅ OpenAI key сохранён.")
+    await message.answer("✅ OpenAI key збережено.")
 
 
 @router.message(SettingsStates.waiting_gemini_key)
 async def step_gemini_key(message: Message, state: FSMContext) -> None:
     key = (message.text or "").strip()
     if not key:
-        await message.answer("Пустой ключ. Повтори или /cancel.")
+        await message.answer("Порожній ключ. Повтори або /cancel.")
         return
     try:
         await message.delete()
     except Exception:
         pass
+    from src.llm.gemini_provider import GeminiProvider
+
     if not await GeminiProvider(key).validate_key():
-        await message.answer("❌ Ключ не работает. Повтори или /cancel.")
+        await message.answer("❌ Ключ не працює. Повтори або /cancel.")
         return
     async with get_session() as session:
         owner = await get_or_create_user(session, message.from_user.id)
         await upsert_api_key(session, owner, "gemini", key)
     await state.clear()
-    await message.answer("✅ Gemini key сохранён.")
+    await message.answer("✅ Gemini key збережено.")
 
 
 @router.message(SettingsStates.waiting_digest_time)
 async def step_digest_time(message: Message, state: FSMContext) -> None:
     hm = (message.text or "").strip()
     if not HM_RE.match(hm):
-        await message.answer("Формат HH:MM, например <code>06:30</code>. Повтори или /cancel.")
+        await message.answer("Формат HH:MM, наприклад <code>06:30</code>. Повтори або /cancel.")
         return
     async with get_session() as session:
         owner = await get_or_create_user(session, message.from_user.id)
         owner.settings.digest_time = hm
     await state.clear()
-    await message.answer(f"✅ Время дайджеста: <b>{hm} UTC</b>.")
+    await message.answer(f"✅ Час дайджесту: <b>{hm} UTC</b>.")
 
 
 @router.message(SettingsStates.waiting_news_time)
 async def step_news_time(message: Message, state: FSMContext) -> None:
     hm = (message.text or "").strip()
     if not HM_RE.match(hm):
-        await message.answer("Формат HH:MM, например <code>07:30</code>. Повтори или /cancel.")
+        await message.answer("Формат HH:MM, наприклад <code>07:30</code>. Повтори або /cancel.")
         return
     async with get_session() as session:
         owner = await get_or_create_user(session, message.from_user.id)
         owner.settings.news_digest_time = hm
         tz = owner.settings.timezone
     await state.clear()
-    await message.answer(f"✅ Время авто-новостей: <b>{hm}</b> · {tz_short(tz)}.")
+    await message.answer(f"✅ Час авто-новин: <b>{hm}</b> · {tz_short(tz)}.")
 
 
 @router.message(SettingsStates.waiting_auto_reply_text)
 async def step_auto_reply_text(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     if not text:
-        await message.answer("Пустой текст. Повтори или /cancel.")
+        await message.answer("Порожній текст. Повтори або /cancel.")
         return
     if len(text) > 1000:
-        await message.answer("Слишком длинно (макс. 1000 символов). Повтори или /cancel.")
+        await message.answer("Задовго (макс. 1000 символів). Повтори або /cancel.")
         return
     async with get_session() as session:
         owner = await get_or_create_user(session, message.from_user.id)
         owner.settings.auto_reply_text = text
     await state.clear()
-    await message.answer(f"✅ Текст автоответа сохранён:\n<i>«{text}»</i>")
+    await message.answer(f"✅ Текст авто-відповіді збережено:\n<i>«{text}»</i>")
 
 
 @router.message(SettingsStates.waiting_timezone)
@@ -598,13 +604,13 @@ async def step_timezone(message: Message, state: FSMContext) -> None:
     tz_value = (message.text or "").strip()
     if not is_valid_tz(tz_value):
         await message.answer(
-            "Не нашёл такой TZ. Используй IANA-формат, например <code>Europe/Moscow</code>. "
+            "Не знайшов такий TZ. Використовуй IANA-формат, наприклад <code>Europe/Kyiv</code>. "
             "Список: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones — "
-            "колонка «TZ identifier». /cancel — отмена."
+            "колонка «TZ identifier». /cancel — скасувати."
         )
         return
     async with get_session() as session:
         owner = await get_or_create_user(session, message.from_user.id)
         owner.settings.timezone = tz_value
     await state.clear()
-    await message.answer(f"✅ Часовой пояс: <b>{tz_short(tz_value)}</b>")
+    await message.answer(f"✅ Часовий пояс: <b>{tz_short(tz_value)}</b>")

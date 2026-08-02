@@ -9,6 +9,7 @@ from telethon import TelegramClient, events
 from telethon.tl.custom import Message as TgMessage
 from telethon.tl.types import User as TgUser
 
+from src.config import settings
 from src.db.repo import get_or_create_user, upsert_message, upsert_contact
 from src.db.session import get_session
 
@@ -61,6 +62,10 @@ def attach_mirror(client: TelegramClient, owner_telegram_id: int) -> None:
             msg: TgMessage = event.message
             peer_id = _peer_id_of(msg)
             if not peer_id:
+                return
+            if peer_id == settings.control_bot_id:
+                # Переписка владельца с самим control-ботом — служебная, не контент
+                # для саммари/поиска. Без этого фильтра /search находит ответы бота.
                 return
 
             kind = _classify(msg)

@@ -57,13 +57,13 @@ async def _check_once(owner_telegram_id: int) -> None:
         return
 
     for commitment, reason in to_remind:
-        who = "Я" if commitment.direction == "mine" else (commitment.peer_name or "Они")
+        who = "Я" if commitment.direction == "mine" else (commitment.peer_name or "Вони")
         d = fmt_local(commitment.deadline_at, tz_name)
         if reason == "overdue":
             text = (
-                f"⏰ <b>Просрочено</b>\n"
+                f"⏰ <b>Протерміновано</b>\n"
                 f"<b>{who}</b>: {commitment.text}\n"
-                f"Срок был: {d}"
+                f"Термін був: {d}"
             )
         else:
             text = (

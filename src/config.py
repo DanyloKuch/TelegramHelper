@@ -13,9 +13,9 @@ class LLMDefaults:
     OPENAI_CHAT_HEAVY = "gpt-5.5"
     OPENAI_EMBED = "text-embedding-3-small"
 
-    GEMINI_CHAT_LIGHT = "gemini-3-flash"
-    GEMINI_CHAT_HEAVY = "gemini-3.1-pro"
-    GEMINI_EMBED = "text-embedding-004"
+    GEMINI_CHAT_LIGHT = "gemini-3.5-flash-lite"
+    GEMINI_CHAT_HEAVY = "gemini-3.6-flash"
+    GEMINI_EMBED = "gemini-embedding-001"
 
 
 class Settings(BaseSettings):
@@ -29,6 +29,25 @@ class Settings(BaseSettings):
     owner_telegram_id: int = Field(..., description="Telegram user_id единственного владельца")
     encryption_key: str = Field(..., description="Fernet-ключ (base64)")
     database_url: str = Field("sqlite+aiosqlite:///data/app.db")
+
+    # Свой Whisper large-v3 на Modal GPU. Пусто — режим "modal" недоступен,
+    # hybrid откатывается на OpenAI (если задан ключ).
+    whisper_modal_url: str = Field("", description="URL Modal-эндпоинта whisper")
+    whisper_modal_api_key: str = Field("", description="X-API-Key для Modal-эндпоинта")
+
+    @property
+    def modal_stt_configured(self) -> bool:
+        return bool(self.whisper_modal_url)
+
+    @property
+    def control_bot_id(self) -> int:
+        """user_id этого control-бота — это числовой префикс его же токена до ':'.
+
+        Нужен, чтобы зеркало не писало в БД переписку владельца с самим ботом:
+        иначе она попадает в общий поисковый корпус, и /search находит собственные
+        ответы бота вместо реальных сообщений.
+        """
+        return int(self.bot_token.split(":", 1)[0])
 
     @property
     def data_dir(self) -> Path:

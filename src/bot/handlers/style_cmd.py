@@ -19,11 +19,11 @@ router.message.filter(OwnerOnly())
 async def cmd_style(message: Message, command: CommandObject, userbot_manager: UserbotManager) -> None:
     client = userbot_manager.get_client(message.from_user.id)
     if client is None:
-        await message.answer("Сначала /login.")
+        await message.answer("Спершу /login.")
         return
     query = (command.args or "").strip()
     if not query:
-        await message.answer("Использование: <code>/style имя контакта</code> — пересчитать профиль стиля общения.")
+        await message.answer("Використання: <code>/style ім'я контакту</code> — перерахувати профіль стилю спілкування.")
         return
 
     async with get_session() as session:
@@ -31,23 +31,23 @@ async def cmd_style(message: Message, command: CommandObject, userbot_manager: U
         provider = await build_provider(session, owner)
 
     if provider is None:
-        await message.answer("Сначала добавь LLM-ключ в /settings.")
+        await message.answer("Спершу додай LLM-ключ у /settings.")
         return
 
     candidates = await resolve(client, owner, query)
     if not candidates:
-        await message.answer("Контакт не найден.")
+        await message.answer("Контакт не знайдено.")
         return
     target = candidates[0]
     profile = await update_style_profile_for_contact(provider, message.from_user.id, target.peer_id)
     if not profile:
         await message.answer(
-            f"Не нашёл достаточно моих сообщений к <b>{target.label()}</b>. "
-            "Сначала открой /chat и подгрузи историю."
+            f"Не знайшов достатньо моїх повідомлень до <b>{target.label()}</b>. "
+            "Спершу відкрий /chat і підгрузи історію."
         )
         return
 
     short = ", ".join(f"{k}: {v}" for k, v in list(profile.items())[:5] if isinstance(v, (str, int)))
     await message.answer(
-        f"✅ Профиль стиля для <b>{target.label()}</b> обновлён.\n<i>{short}</i>"
+        f"✅ Профіль стилю для <b>{target.label()}</b> оновлено.\n<i>{short}</i>"
     )

@@ -1,9 +1,7 @@
 import asyncio
 
-from google import genai
-
 from src.config import LLMDefaults
-from src.llm.base import ChatMessage
+from src.llm.base import ChatMessage, with_output_language
 
 
 def _to_gemini_contents(messages: list[ChatMessage]) -> tuple[str | None, list[dict]]:
@@ -24,6 +22,9 @@ class GeminiProvider:
     name = "gemini"
 
     def __init__(self, api_key: str) -> None:
+        # Ленивый импорт: google-genai стоит ~80 МБ RSS и нужен только своему провайдеру.
+        from google import genai
+
         self._client = genai.Client(api_key=api_key)
 
     async def validate_key(self) -> bool:
@@ -39,7 +40,7 @@ class GeminiProvider:
 
     async def chat(self, messages: list[ChatMessage], *, heavy: bool = False) -> str:
         model = LLMDefaults.GEMINI_CHAT_HEAVY if heavy else LLMDefaults.GEMINI_CHAT_LIGHT
-        system, contents = _to_gemini_contents(messages)
+        system, contents = _to_gemini_contents(with_output_language(messages))
 
         def _call() -> str:
             config = {"system_instruction": system} if system else None

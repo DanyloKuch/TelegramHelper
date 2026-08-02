@@ -50,7 +50,11 @@ class _Cleaner(HTMLParser):
         self.parts.append(f"</{norm}>")
 
     def handle_data(self, data: str):
-        self.parts.append(data)
+        # Якщо сюди дійшов буквальний "<"/">" — це НЕ розпізнаний тег (напр. Python
+        # html.parser не вважає тегом "<Тема>", бо після "<" йде кирилиця, а не a-zA-Z), і
+        # HTMLParser віддає його як звичайний текст. Без екранування Telegram потім падає з
+        # "can't parse entities: Unsupported start tag".
+        self.parts.append(data.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
     def handle_entityref(self, name: str):
         self.parts.append(f"&{name};")

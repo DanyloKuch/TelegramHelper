@@ -9,6 +9,9 @@ data/
 *.session
 *.session-journal
 
+# сборка tray-exe (PyInstaller)
+build_out/
+
 __pycache__/
 *.pyc
 *.pyo

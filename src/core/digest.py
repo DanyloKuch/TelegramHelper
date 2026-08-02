@@ -8,7 +8,7 @@ from src.config import settings as app_settings
 from src.core.notifier import notifier
 from src.core.text_sanitizer import sanitize_html
 from src.core.timeutil import fmt_local, now_in_tz
-from src.db.models import AutoReplyLog, Commitment, Message, User
+from src.db.models import AutoReplyLog, Commitment, Contact, Message, User
 from src.db.repo import get_or_create_user, list_open_commitments
 from src.db.session import get_session
 from src.llm.base import ChatMessage
@@ -19,14 +19,14 @@ logger = logging.getLogger(__name__)
 
 
 DIGEST_SYSTEM = (
-    "Ты делаешь короткий утренний дайджест по моей Telegram-активности.\n"
+    "Ти робиш короткий ранковий дайджест по моїй Telegram-активності.\n"
     "Структура (HTML aiogram):\n"
-    "☀ <b>Доброе утро!</b>\n\n"
-    "📨 <b>Ждут ответа</b> (если есть): кто и про что (1 строка на собеседника).\n"
-    "🔥 <b>Мои горящие обещания</b>: те, что просрочены или ближайшие 24ч.\n"
-    "💼 <b>Обещания мне</b>: что просрочено или скоро.\n"
-    "🤖 <b>Авто-ответы</b>: сколько и кому, без подробностей.\n"
-    "Если в каком-то блоке пусто — пропускай блок целиком."
+    "☀ <b>Доброго ранку!</b>\n\n"
+    "📨 <b>Чекають відповіді</b> (якщо є): хто і про що (1 рядок на співрозмовника).\n"
+    "🔥 <b>Мої гарячі обіцянки</b>: ті, що протерміновані або в найближчі 24 год.\n"
+    "💼 <b>Обіцянки мені</b>: що протерміновано або скоро.\n"
+    "🤖 <b>Авто-відповіді</b>: скільки й кому, без подробиць.\n"
+    "Якщо в якомусь блоці порожньо — пропускай блок цілком."
 )
 
 
@@ -52,6 +52,11 @@ async def _gather_payload(owner: User) -> dict:
         for m in incoming:
             by_peer.setdefault(m.peer_id, []).append(m)
 
+        contacts_result = await session.execute(
+            select(Contact.peer_id, Contact.display_name).where(Contact.user_id == owner.id)
+        )
+        contact_names = {peer_id: name for peer_id, name in contacts_result.all()}
+
         waiting: list[tuple[int, str | None, str]] = []
         for peer_id, msgs in by_peer.items():
             last_in = max(msgs, key=lambda x: x.date)
@@ -67,7 +72,11 @@ async def _gather_payload(owner: User) -> dict:
             )
             if my_after.scalar_one_or_none() is None:
                 snippet = (last_in.transcript or last_in.text or last_in.extracted_text or "")[:200]
-                waiting.append((peer_id, last_in.sender_name, snippet))
+                # назва чату з Contacts, а не sender_name повідомлення: для постів у каналі
+                # sender_name — це username каналу (в каналів немає first/last name), а не
+                # його реальна назва.
+                display_name = contact_names.get(peer_id) or last_in.sender_name
+                waiting.append((peer_id, display_name, snippet))
 
         mine = await list_open_commitments(session, owner, direction="mine")
         theirs = await list_open_commitments(session, owner, direction="theirs")
@@ -102,23 +111,23 @@ def _payload_to_text(payload: dict, tz_name: str) -> str:
     parts: list[str] = []
     if payload["waiting"]:
         lines = [f"- {name or peer_id}: {snippet}" for peer_id, name, snippet in payload["waiting"][:20]]
-        parts.append("Ждут ответа:\n" + "\n".join(lines))
+        parts.append("Чекають відповіді:\n" + "\n".join(lines))
     if payload["mine_hot"]:
         lines = []
         for c in payload["mine_hot"][:20]:
             d = fmt_local(c.deadline_at, tz_name) if c.deadline_at else "без срока"
             lines.append(f"- {c.peer_name or c.peer_id}: {c.text} (до {d})")
-        parts.append("Мои горящие обещания:\n" + "\n".join(lines))
+        parts.append("Мої гарячі обіцянки:\n" + "\n".join(lines))
     if payload["theirs_hot"]:
         lines = []
         for c in payload["theirs_hot"][:20]:
             d = fmt_local(c.deadline_at, tz_name) if c.deadline_at else "без срока"
             lines.append(f"- {c.peer_name or c.peer_id}: {c.text} (до {d})")
-        parts.append("Обещания мне (горящие):\n" + "\n".join(lines))
+        parts.append("Обіцянки мені (гарячі):\n" + "\n".join(lines))
     if payload["autoreplies"]:
         peers = {a.peer_name or a.peer_id for a in payload["autoreplies"]}
-        parts.append(f"Авто-ответов: {len(payload['autoreplies'])} (кому: {', '.join(map(str, peers))})")
-    return "\n\n".join(parts) or "Активности не было."
+        parts.append(f"Авто-відповідей: {len(payload['autoreplies'])} (кому: {', '.join(map(str, peers))})")
+    return "\n\n".join(parts) or "Активності не було."
 
 
 async def build_digest(owner_telegram_id: int) -> str:
@@ -129,12 +138,12 @@ async def build_digest(owner_telegram_id: int) -> str:
         tz_name = owner.settings.timezone
 
     if provider is None:
-        return "Не задан LLM-ключ — не могу собрать дайджест. Открой /settings."
+        return "Не заданий LLM-ключ — не можу зібрати дайджест. Відкрий /settings."
 
     payload = await _gather_payload(owner)
     raw_text = _payload_to_text(payload, tz_name)
-    if raw_text == "Активности не было.":
-        return "☀ Доброе утро! За ночь — тишина."
+    if raw_text == "Активності не було.":
+        return "☀ Доброго ранку! За ніч — тиша."
 
     response = await provider.chat(
         [

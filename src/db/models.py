@@ -47,7 +47,7 @@ class UserSettings(Base):
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")  # IANA tz, например Europe/Moscow
     digest_time: Mapped[str] = mapped_column(String(5), default="09:00")  # HH:MM в timezone юзера
     digest_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    transcription_mode: Mapped[str] = mapped_column(String(16), default="local")  # local | api | hybrid
+    transcription_mode: Mapped[str] = mapped_column(String(16), default="local")  # local | api | modal | hybrid
     auto_reply_cooldown_min: Mapped[int] = mapped_column(Integer, default=30)
     auto_reply_mode: Mapped[str] = mapped_column(String(8), default="static")  # static | smart
     auto_reply_text: Mapped[str] = mapped_column(
@@ -214,4 +214,51 @@ class NewsTopic(Base):
     topic: Mapped[str] = mapped_column(String(256))
     hours: Mapped[int] = mapped_column(Integer, default=24)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Project(Base):
+    """Проєкт трекера часу — створюється на льоту при першому запуску таймера."""
+
+    __tablename__ = "projects"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_project_user_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TimeEntry(Base):
+    """Один запуск таймера. ended_at is None → активний; кілька активних одночасно = паралельні запуски."""
+
+    __tablename__ = "time_entries"
+    __table_args__ = (
+        Index("ix_time_entries_user_ended", "user_id", "ended_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    note: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project: Mapped["Project"] = relationship(lazy="selectin")
+
+
+class ChatLabel(Base):
+    """Метка чата, заданная владельцем свободным текстом («тренування», «робота»), чтобы потом
+    ссылаться на этот чат без имени («перешли моё тренування», «допиши в тренування»)."""
+
+    __tablename__ = "chat_labels"
+    __table_args__ = (UniqueConstraint("user_id", "label", name="uq_chat_label_user_label"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    peer_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    peer_name: Mapped[str] = mapped_column(String(256))
+    label: Mapped[str] = mapped_column(String(64))  # нормализованный (casefold) ключ метки
+    message_prefix: Mapped[str | None] = mapped_column(String(64), nullable=True)  # напр. "Тиждень"
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

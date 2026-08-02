@@ -57,6 +57,17 @@ def fmt_local(dt: datetime | None, tz_name: str | None, *, fmt: str = "%Y-%m-%d 
     return local.strftime(fmt)
 
 
+def fmt_duration(seconds: float) -> str:
+    total = max(0, int(seconds))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}г {m:02d}хв"
+    if m:
+        return f"{m}хв"
+    return f"{s}с"
+
+
 def tz_short(tz_name: str | None) -> str:
     tz = parse_tz(tz_name)
     offset = datetime.now(tz).utcoffset()

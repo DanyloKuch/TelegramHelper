@@ -10,12 +10,15 @@ from src.crypto import decrypt, encrypt
 from src.db.models import (
     ApiKey,
     AutoReplyLog,
+    ChatLabel,
     Commitment,
     Contact,
     Message,
     NewsTopic,
     PendingAction,
+    Project,
     TelegramSession,
+    TimeEntry,
     TranscriptionCache,
     User,
     UserSettings,
@@ -341,6 +344,10 @@ async def cache_transcript(
         existing.duration_seconds = duration_seconds
 
 
+def _norm_commitment_text(value: str) -> str:
+    return " ".join(value.split()).casefold().rstrip(".!…")
+
+
 async def add_commitment(
     session: AsyncSession,
     *,
@@ -352,6 +359,38 @@ async def add_commitment(
     text: str,
     deadline_at: datetime | None,
 ) -> Commitment:
+    """Идемпотентно: одно и то же обещание прилетает повторно.
+
+    Анализ чата (/chat, /catchup) переизвлекает обещания при каждом прогоне, а
+    путь «напомни мне» сохраняет их же с peer_id=0, когда контакт не распознан.
+    Поэтому ключ дедупа — текст + направление, а peer_id=0 считаем «любым».
+    """
+    norm = _norm_commitment_text(text)
+    result = await session.execute(
+        select(Commitment).where(
+            Commitment.user_id == user_id,
+            Commitment.direction == direction,
+            Commitment.status == "open",
+        )
+    )
+    for existing in result.scalars().all():
+        if _norm_commitment_text(existing.text) != norm:
+            continue
+        # Разные собеседники с одинаковой формулировкой — это разные обещания.
+        if existing.peer_id != peer_id and existing.peer_id != 0 and peer_id != 0:
+            continue
+        # Дополняем недостающее, но не перетираем уже известное:
+        # повторный прогон LLM любит подставить «конец дня» вместо реального срока.
+        if not existing.peer_id and peer_id:
+            existing.peer_id = peer_id
+            existing.peer_name = peer_name
+        if existing.deadline_at is None and deadline_at is not None:
+            existing.deadline_at = deadline_at
+        if existing.message_id is None and message_id is not None:
+            existing.message_id = message_id
+        await session.flush()
+        return existing
+
     c = Commitment(
         user_id=user_id,
         peer_id=peer_id,
@@ -487,3 +526,112 @@ async def toggle_news_topic(session: AsyncSession, user: User, topic_id: int) ->
         return None
     nt.enabled = not nt.enabled
     return nt.enabled
+
+
+async def upsert_chat_label(
+    session: AsyncSession,
+    user: User,
+    *,
+    peer_id: int,
+    peer_name: str,
+    label: str,
+    message_prefix: str | None = None,
+) -> ChatLabel:
+    norm = label.strip().casefold()
+    result = await session.execute(
+        select(ChatLabel).where(ChatLabel.user_id == user.id, ChatLabel.label == norm)
+    )
+    existing = result.scalar_one_or_none()
+    if existing is None:
+        existing = ChatLabel(
+            user_id=user.id,
+            peer_id=peer_id,
+            peer_name=peer_name,
+            label=norm,
+            message_prefix=message_prefix,
+        )
+        session.add(existing)
+        await session.flush()
+    else:
+        existing.peer_id = peer_id
+        existing.peer_name = peer_name
+        if message_prefix is not None:
+            existing.message_prefix = message_prefix
+    return existing
+
+
+async def list_chat_labels(session: AsyncSession, user: User) -> list[ChatLabel]:
+    result = await session.execute(
+        select(ChatLabel).where(ChatLabel.user_id == user.id).order_by(ChatLabel.label.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_chat_label(session: AsyncSession, user: User, label: str) -> ChatLabel | None:
+    norm = label.strip().casefold()
+    result = await session.execute(
+        select(ChatLabel).where(ChatLabel.user_id == user.id, ChatLabel.label == norm)
+    )
+    return result.scalar_one_or_none()
+
+
+async def delete_chat_label(session: AsyncSession, user: User, label: str) -> bool:
+    existing = await get_chat_label(session, user, label)
+    if existing is None:
+        return False
+    await session.delete(existing)
+    return True
+
+
+async def get_or_create_project(session: AsyncSession, user: User, name: str) -> Project:
+    name = name.strip()
+    result = await session.execute(
+        select(Project).where(Project.user_id == user.id, Project.name == name)
+    )
+    project = result.scalar_one_or_none()
+    if project is None:
+        project = Project(user_id=user.id, name=name)
+        session.add(project)
+        await session.flush()
+    return project
+
+
+async def get_project(session: AsyncSession, project_id: int) -> Project | None:
+    return await session.get(Project, project_id)
+
+
+async def list_projects(session: AsyncSession, user: User) -> list[Project]:
+    result = await session.execute(
+        select(Project).where(Project.user_id == user.id).order_by(Project.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def start_time_entry(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    project_id: int,
+    note: str | None = None,
+) -> TimeEntry:
+    entry = TimeEntry(user_id=user_id, project_id=project_id, note=note)
+    session.add(entry)
+    await session.flush()
+    return entry
+
+
+async def stop_time_entry(session: AsyncSession, entry_id: int, *, ended_at: datetime) -> TimeEntry | None:
+    entry = await session.get(TimeEntry, entry_id)
+    if entry is None or entry.ended_at is not None:
+        return None
+    entry.ended_at = ended_at
+    return entry
+
+
+async def list_active_entries(session: AsyncSession, user: User) -> list[TimeEntry]:
+    result = await session.execute(
+        select(TimeEntry)
+        .where(TimeEntry.user_id == user.id, TimeEntry.ended_at.is_(None))
+        .order_by(TimeEntry.started_at.asc())
+    )
+    return list(result.scalars().all())
