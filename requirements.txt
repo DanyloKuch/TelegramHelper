@@ -22,3 +22,6 @@ qdrant-client>=1.12
 
 # Fuzzy matching контактов
 rapidfuzz>=3.10
+
+# QR-логин в Telegram
+qrcode[pil]>=7.4
