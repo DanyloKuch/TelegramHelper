@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from time import time
 
 
-MAX_TURNS = 8
+MAX_TURNS = 10
 LAST_PEER_TTL_SECONDS = 30 * 60  # 30 минут
 
 
@@ -37,7 +37,7 @@ def add_turn(user_id: int, user_text: str, assistant_summary: str) -> None:
     assistant_summary = (assistant_summary or "").strip()
     if not user_text and not assistant_summary:
         return
-    ctx.turns.append((user_text[:400], assistant_summary[:400]))
+    ctx.turns.append((user_text[:900], assistant_summary[:400]))
 
 
 def set_last_peer(user_id: int, peer_id: int, peer_name: str | None) -> None:
