@@ -21,6 +21,7 @@ from src.bot.handlers import (
     settings as settings_handlers,
     start,
     style_cmd,
+    tasks,
     todos,
     track,
 )
@@ -58,6 +59,7 @@ async def run_bot(userbot_manager: UserbotManager) -> None:
     dp.include_router(news_topics.router)
     dp.include_router(chat_labels.router)
     dp.include_router(track.router)
+    dp.include_router(tasks.router)
     # menu — перед free_text: подписи кнопок приходят обычным текстом
     dp.include_router(menu.router)
     # ВАЖНО: free_text — самым последним, чтобы команды и FSM перехватили текст раньше

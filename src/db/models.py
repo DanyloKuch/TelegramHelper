@@ -248,6 +248,25 @@ class TimeEntry(Base):
     project: Mapped["Project"] = relationship(lazy="selectin")
 
 
+class Task(Base):
+    """Завдання власника, згруповане за проєктом (той самий Project, що й у трекері часу)."""
+
+    __tablename__ = "tasks"
+    __table_args__ = (
+        Index("ix_tasks_user_status", "user_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    text: Mapped[str] = mapped_column(String(512))
+    status: Mapped[str] = mapped_column(String(16), default="open")  # open | done | cancelled
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    project: Mapped["Project"] = relationship(lazy="selectin")
+
+
 class ChatLabel(Base):
     """Метка чата, заданная владельцем свободным текстом («тренування», «робота»), чтобы потом
     ссылаться на этот чат без имени («перешли моё тренування», «допиши в тренування»)."""

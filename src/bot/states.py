@@ -40,3 +40,8 @@ class MenuStates(StatesGroup):
 class TrackStates(StatesGroup):
     waiting_project = State()
     waiting_note = State()
+
+
+class TaskStates(StatesGroup):
+    waiting_project = State()
+    waiting_text = State()

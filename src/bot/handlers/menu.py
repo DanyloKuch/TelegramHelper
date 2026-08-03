@@ -29,20 +29,21 @@ BTN_SETTINGS = "⚙ Налаштування"
 BTN_SYNC = "🔄 Синхронізація"
 BTN_HELP = "❓ Довідка"
 BTN_TRACKER = "⏱ Трекер"
+BTN_TASKS = "📝 Завдання"
 
 ALL_BUTTONS = {
     BTN_TODOS, BTN_DIGEST, BTN_SEARCH, BTN_CHAT,
-    BTN_NEWS, BTN_SETTINGS, BTN_SYNC, BTN_HELP, BTN_TRACKER,
+    BTN_NEWS, BTN_SETTINGS, BTN_SYNC, BTN_HELP, BTN_TRACKER, BTN_TASKS,
 }
 
-# Сетка 2 колонки: 9 кнопок, последняя строка неполная.
+# Сетка 2 колонки: 10 кнопок.
 MAIN_KB = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text=BTN_TODOS), KeyboardButton(text=BTN_CHAT)],
         [KeyboardButton(text=BTN_SEARCH), KeyboardButton(text=BTN_DIGEST)],
         [KeyboardButton(text=BTN_NEWS), KeyboardButton(text=BTN_SETTINGS)],
         [KeyboardButton(text=BTN_SYNC), KeyboardButton(text=BTN_HELP)],
-        [KeyboardButton(text=BTN_TRACKER)],
+        [KeyboardButton(text=BTN_TRACKER), KeyboardButton(text=BTN_TASKS)],
     ],
     resize_keyboard=True,
     is_persistent=True,
@@ -118,6 +119,13 @@ async def btn_tracker(message: Message) -> None:
     from src.bot.handlers.track import cmd_track
 
     await cmd_track(message)
+
+
+@router.message(F.text == BTN_TASKS)
+async def btn_tasks(message: Message) -> None:
+    from src.bot.handlers.tasks import cmd_tasks
+
+    await cmd_tasks(message)
 
 
 # ---------- кнопки, которым нужен аргумент ----------

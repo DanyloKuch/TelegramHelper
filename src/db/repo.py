@@ -17,6 +17,7 @@ from src.db.models import (
     NewsTopic,
     PendingAction,
     Project,
+    Task,
     TelegramSession,
     TimeEntry,
     TranscriptionCache,
@@ -645,3 +646,29 @@ async def list_entries_from(session: AsyncSession, user: User, start_utc: dateti
         .order_by(TimeEntry.started_at.asc())
     )
     return list(result.scalars().all())
+
+
+async def add_task(session: AsyncSession, *, user_id: int, project_id: int, text: str) -> Task:
+    task = Task(user_id=user_id, project_id=project_id, text=text.strip())
+    session.add(task)
+    await session.flush()
+    return task
+
+
+async def list_open_tasks(session: AsyncSession, user: User) -> list[Task]:
+    result = await session.execute(
+        select(Task)
+        .where(Task.user_id == user.id, Task.status == "open")
+        .order_by(Task.created_at.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def update_task_status(session: AsyncSession, task_id: int, status: str) -> Task | None:
+    task = await session.get(Task, task_id)
+    if task is None:
+        return None
+    task.status = status
+    if status == "done":
+        task.done_at = datetime.utcnow()
+    return task
