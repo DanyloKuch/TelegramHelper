@@ -15,13 +15,14 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from src.bot.filters import OwnerOnly
 from src.bot.states import TrackStates
 from src.core.project_resolver import resolve_project
-from src.core.timeutil import fmt_duration
+from src.core.timeutil import fmt_duration, fmt_local, start_of_local_day_utc
 from src.db.models import TimeEntry
 from src.db.repo import (
     get_or_create_project,
     get_or_create_user,
     get_project,
     list_active_entries,
+    list_entries_from,
     list_projects,
     start_time_entry,
     stop_time_entry,
@@ -37,8 +38,13 @@ router.callback_query.filter(OwnerOnly())
 
 # ───────────────────────── рендер списку активних запусків ─────────────────────────
 
-def _entry_line(entry: TimeEntry) -> str:
-    elapsed = fmt_duration((datetime.utcnow() - entry.started_at).total_seconds())
+def _entry_seconds(entry: TimeEntry, now: datetime) -> float:
+    end = entry.ended_at or now
+    return (end - entry.started_at).total_seconds()
+
+
+def _entry_line(entry: TimeEntry, now: datetime) -> str:
+    elapsed = fmt_duration(_entry_seconds(entry, now))
     note = f" — {entry.note}" if entry.note else ""
     return f"⏱ <b>{entry.project.name}</b>{note} · {elapsed}"
 
@@ -51,21 +57,73 @@ def _stop_button(entry: TimeEntry) -> InlineKeyboardButton:
 
 
 async def _render(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    now = datetime.utcnow()
     async with get_session() as session:
         owner = await get_or_create_user(session, telegram_id)
         entries = await list_active_entries(session, owner)
+        today_entries = await list_entries_from(
+            session, owner, start_of_local_day_utc(owner.settings.timezone)
+        )
 
     lines = ["⏱ <b>Активні запуски</b>", ""]
     if not entries:
         lines.append("<i>Зараз нічого не йде. Натисни «➕ Новий запуск».</i>")
     else:
-        lines.extend(_entry_line(e) for e in entries)
+        lines.extend(_entry_line(e, now) for e in entries)
+
+    today_seconds = sum(_entry_seconds(e, now) for e in today_entries)
+    if today_seconds > 0:
+        lines.append("")
+        lines.append(f"Σ Сьогодні (з активними): <b>{fmt_duration(today_seconds)}</b>")
 
     kb = InlineKeyboardBuilder()
     for e in entries:
         kb.row(_stop_button(e))
     kb.row(InlineKeyboardButton(text="➕ Новий запуск", callback_data="track:new:0"))
+    kb.row(InlineKeyboardButton(text="📊 Звіт по днях", callback_data="track:report"))
     return "\n".join(lines), kb.as_markup()
+
+
+# ───────────────────────── звіт по днях ─────────────────────────
+
+async def _report_text(telegram_id: int, *, days: int = 14) -> str:
+    now = datetime.utcnow()
+    async with get_session() as session:
+        owner = await get_or_create_user(session, telegram_id)
+        tz_name = owner.settings.timezone
+        since = start_of_local_day_utc(tz_name, days_ago=days - 1)
+        entries = await list_entries_from(session, owner, since)
+
+    totals: dict[str, float] = {}
+    for e in entries:
+        day_key = fmt_local(e.started_at, tz_name, fmt="%Y-%m-%d")
+        totals[day_key] = totals.get(day_key, 0.0) + _entry_seconds(e, now)
+
+    lines = [f"📊 <b>Звіт за останні {days} дн.</b>", ""]
+    if not totals:
+        lines.append("<i>Ще немає жодного запису.</i>")
+    else:
+        for day_key in sorted(totals, reverse=True):
+            lines.append(f"{day_key} — {fmt_duration(totals[day_key])}")
+        lines.append("")
+        lines.append(f"Всього: <b>{fmt_duration(sum(totals.values()))}</b>")
+    return "\n".join(lines)
+
+
+@router.message(Command("report"))
+async def cmd_report(message: Message) -> None:
+    await message.answer(await _report_text(message.from_user.id))
+
+
+@router.callback_query(F.data == "track:report")
+async def cb_report(callback: CallbackQuery) -> None:
+    if callback.message:
+        await callback.message.answer(await _report_text(callback.from_user.id))
+    await callback.answer()
+
+
+async def exec_track_report(intent, message: Message, state: FSMContext, userbot_manager) -> None:
+    await message.answer(await _report_text(message.from_user.id))
 
 
 async def _refresh(callback: CallbackQuery) -> None:

@@ -587,6 +587,8 @@ def _summarize_intent_for_memory(intent: dict) -> str:
         return f"зупинив таймер по проєкту «{intent.get('project')}»" if intent.get("project") else "зупинив таймер"
     if kind == "list_active_tracks":
         return "показав активні запуски трекера"
+    if kind == "track_report":
+        return "показав звіт по трекеру за днями"
     if kind == "chat":
         return (intent.get("reply") or "")[:160]
     return kind or ""
@@ -704,6 +706,10 @@ async def _dispatch(intent, message, state, userbot_manager, *, tz_name: str) ->
     if kind == "list_active_tracks":
         from src.bot.handlers.track import exec_list_active_tracks
         await exec_list_active_tracks(intent, message, state, userbot_manager)
+        return
+    if kind == "track_report":
+        from src.bot.handlers.track import exec_track_report
+        await exec_track_report(intent, message, state, userbot_manager)
         return
     await _execute_intent(intent, message, state, userbot_manager, tz_name=tz_name)
 

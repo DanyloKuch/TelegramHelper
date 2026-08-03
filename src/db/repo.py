@@ -635,3 +635,13 @@ async def list_active_entries(session: AsyncSession, user: User) -> list[TimeEnt
         .order_by(TimeEntry.started_at.asc())
     )
     return list(result.scalars().all())
+
+
+async def list_entries_from(session: AsyncSession, user: User, start_utc: datetime) -> list[TimeEntry]:
+    """Завершені й активні запуски, що почалися не раніше start_utc — основа для звітів/тоталів."""
+    result = await session.execute(
+        select(TimeEntry)
+        .where(TimeEntry.user_id == user.id, TimeEntry.started_at >= start_utc)
+        .order_by(TimeEntry.started_at.asc())
+    )
+    return list(result.scalars().all())

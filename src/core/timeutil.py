@@ -2,7 +2,7 @@
 с расписаниями (digest_time, news_digest_time) переводим в TZ владельца."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -66,6 +66,13 @@ def fmt_duration(seconds: float) -> str:
     if m:
         return f"{m}хв"
     return f"{s}с"
+
+
+def start_of_local_day_utc(tz_name: str | None, days_ago: int = 0) -> datetime:
+    """Північ (00:00) у TZ юзера N днів тому, повернута як naive UTC — зручно як нижня межа для запитів."""
+    local_midnight = now_in_tz(tz_name).replace(hour=0, minute=0, second=0, microsecond=0)
+    local_midnight -= timedelta(days=days_ago)
+    return local_midnight.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def tz_short(tz_name: str | None) -> str:
