@@ -2,15 +2,19 @@
 с расписаниями (digest_time, news_digest_time) переводим в TZ владельца."""
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+logger = logging.getLogger(__name__)
 
 
 # популярные пресеты для быстрых кнопок
 TZ_PRESETS: list[str] = [
     "UTC",
     "Europe/Moscow",
-    "Europe/Kiev",
+    "Europe/Kyiv",
     "Europe/Warsaw",
     "Europe/London",
     "Europe/Berlin",
@@ -29,6 +33,9 @@ def parse_tz(name: str | None) -> ZoneInfo:
     try:
         return ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError):
+        # тиха підміна на UTC тут раніше маскувала биту tzdata (напр. застаріле "Europe/Kiev") —
+        # логуємо, бо інакше різниця в кілька годин непомітна ні в реплаях, ні в нагадуваннях.
+        logger.warning("unknown/unavailable timezone %r, falling back to UTC", name)
         return ZoneInfo("UTC")
 
 
