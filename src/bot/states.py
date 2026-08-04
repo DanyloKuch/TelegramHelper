@@ -21,6 +21,7 @@ class SettingsStates(StatesGroup):
     waiting_gemini_key = State()
     waiting_digest_time = State()
     waiting_news_time = State()
+    waiting_checkin_time = State()
     waiting_lead_hours = State()
     waiting_timezone = State()
     waiting_auto_reply_text = State()
@@ -45,3 +46,11 @@ class TrackStates(StatesGroup):
 class TaskStates(StatesGroup):
     waiting_project = State()
     waiting_text = State()
+
+
+class CheckinStates(StatesGroup):
+    waiting_project = State()
+    waiting_task = State()
+    waiting_result = State()
+    waiting_time_spent = State()
+    waiting_comment = State()

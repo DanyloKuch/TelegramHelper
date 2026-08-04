@@ -46,6 +46,7 @@ async def _render_menu(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
         f"☀ Дайджест: {_check(s.digest_enabled)} ({s.digest_time})\n"
         f"⏰ Нагадування: {_check(s.reminders_enabled)} (за {s.reminder_lead_hours}год; протермінування {_check(s.reminder_overdue_enabled)})\n"
         f"📰 Новини: {_check(s.news_enabled)} (вікно {s.news_window_hours}год)\n"
+        f"📋 Чек-ін: {_check(s.checkin_enabled)} ({s.checkin_time})\n"
         f"🛡 Ігнорувати архів: {_check(s.ignore_archived)}\n"
         f"🤖 LLM: <b>{s.llm_provider}</b> · {'важка' if s.use_heavy_model else 'легка'}\n"
         f"🎤 Транскрипція: <b>{s.transcription_mode}</b>\n"
@@ -65,6 +66,7 @@ async def _render_menu(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
         InlineKeyboardButton(text="📰 Новини", callback_data="set:sec:news"),
         InlineKeyboardButton(text="🛡 Приватність", callback_data="set:sec:privacy"),
     )
+    kb.row(InlineKeyboardButton(text="📋 Чек-ін", callback_data="set:sec:checkin"))
     kb.row(
         InlineKeyboardButton(text="🤖 LLM", callback_data="set:sec:llm"),
         InlineKeyboardButton(text="🎤 Транскрипція", callback_data="set:sec:transcription"),
@@ -115,6 +117,7 @@ BOOL_KEYS = {
     "reminder_overdue_enabled",
     "news_enabled",
     "use_heavy_model",
+    "checkin_enabled",
 }
 
 CHOICE_KEYS = {
@@ -183,6 +186,7 @@ def _section_for_key(key: str) -> str:
         "reminder_overdue_enabled": "reminders",
         "news_enabled": "news",
         "news_window_hours": "news",
+        "checkin_enabled": "checkin",
         "llm_provider": "llm",
         "use_heavy_model": "llm",
         "transcription_mode": "transcription",
@@ -418,6 +422,24 @@ async def _render_section(telegram_id: int, section: str) -> tuple[str, InlineKe
         ))
         kb.row(*_back_row())
 
+    elif section == "checkin":
+        text = (
+            "📋 <b>Щоденний чек-ін</b>\n\n"
+            "Раз на добу у вказаний час нагадую заповнити чек-ін по проєктах — дані летять "
+            "окремим рядком у Google Sheets (проєкт, задача, результат, час, коментар). "
+            "Кнопка «Звіт зроблено» під нагадуванням дозволяє відмітити день закритим, якщо "
+            "заповнив таблицю вручну.\n\n"
+            f"Статус: <b>{'УВІМК' if s.checkin_enabled else 'ВИМК'}</b>\n"
+            f"Час: <b>{s.checkin_time}</b> · {tz_short(s.timezone)}\n\n"
+            "Для разового заповнення поза розкладом — команда /checkin"
+        )
+        kb.row(InlineKeyboardButton(
+            text=f"{_check(s.checkin_enabled)} Увімкнути чек-ін",
+            callback_data="set:tog:checkin_enabled",
+        ))
+        kb.row(InlineKeyboardButton(text=f"⏰ Час: {s.checkin_time}", callback_data="set:input:checkin_time"))
+        kb.row(*_back_row())
+
     elif section == "keys":
         text = (
             "🔑 <b>API-ключі</b>\n\n"
@@ -480,6 +502,15 @@ async def cb_input_news_time(callback: CallbackQuery, state: FSMContext) -> None
     await state.set_state(SettingsStates.waiting_news_time)
     await callback.message.answer(
         "Введи час ранкових авто-новин у <code>HH:MM</code> (UTC). /cancel — скасувати."
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "set:input:checkin_time")
+async def cb_input_checkin_time(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(SettingsStates.waiting_checkin_time)
+    await callback.message.answer(
+        "Введи час щоденного чек-іну у <code>HH:MM</code> (твій часовий пояс). /cancel — скасувати."
     )
     await callback.answer()
 
@@ -581,6 +612,20 @@ async def step_news_time(message: Message, state: FSMContext) -> None:
         tz = owner.settings.timezone
     await state.clear()
     await message.answer(f"✅ Час авто-новин: <b>{hm}</b> · {tz_short(tz)}.")
+
+
+@router.message(SettingsStates.waiting_checkin_time)
+async def step_checkin_time(message: Message, state: FSMContext) -> None:
+    hm = (message.text or "").strip()
+    if not HM_RE.match(hm):
+        await message.answer("Формат HH:MM, наприклад <code>20:00</code>. Повтори або /cancel.")
+        return
+    async with get_session() as session:
+        owner = await get_or_create_user(session, message.from_user.id)
+        owner.settings.checkin_time = hm
+        tz = owner.settings.timezone
+    await state.clear()
+    await message.answer(f"✅ Час чек-іну: <b>{hm}</b> · {tz_short(tz)}.")
 
 
 @router.message(SettingsStates.waiting_auto_reply_text)

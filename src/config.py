@@ -35,9 +35,18 @@ class Settings(BaseSettings):
     whisper_modal_url: str = Field("", description="URL Modal-эндпоинта whisper")
     whisper_modal_api_key: str = Field("", description="X-API-Key для Modal-эндпоинта")
 
+    google_sheets_id: str = Field("", description="ID Google-таблиці для щоденного чек-іну")
+    google_sheets_credentials_path: str = Field(
+        "data/google-sheets-sa.json", description="Шлях до service-account JSON"
+    )
+
     @property
     def modal_stt_configured(self) -> bool:
         return bool(self.whisper_modal_url)
+
+    @property
+    def sheets_configured(self) -> bool:
+        return bool(self.google_sheets_id) and Path(self.google_sheets_credentials_path).exists()
 
     @property
     def control_bot_id(self) -> int:

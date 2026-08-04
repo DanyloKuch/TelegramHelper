@@ -25,3 +25,6 @@ rapidfuzz>=3.10
 
 # QR-логин в Telegram
 qrcode[pil]>=7.4
+
+# Google Sheets (щоденний чек-ін)
+gspread>=6.0

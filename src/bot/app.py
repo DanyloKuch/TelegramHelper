@@ -9,6 +9,7 @@ from src.bot.handlers import (
     catchup_cmd,
     chat_cmd,
     chat_labels,
+    checkin,
     digest_cmd,
     free_text,
     login,
@@ -60,6 +61,7 @@ async def run_bot(userbot_manager: UserbotManager) -> None:
     dp.include_router(chat_labels.router)
     dp.include_router(track.router)
     dp.include_router(tasks.router)
+    dp.include_router(checkin.router)
     # menu — перед free_text: подписи кнопок приходят обычным текстом
     dp.include_router(menu.router)
     # ВАЖНО: free_text — самым последним, чтобы команды и FSM перехватили текст раньше

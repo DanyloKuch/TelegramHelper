@@ -30,13 +30,14 @@ BTN_SYNC = "🔄 Синхронізація"
 BTN_HELP = "❓ Довідка"
 BTN_TRACKER = "⏱ Трекер"
 BTN_TASKS = "📝 Завдання"
+BTN_CHECKIN = "📋 Чек-ін"
 
 ALL_BUTTONS = {
     BTN_TODOS, BTN_DIGEST, BTN_SEARCH, BTN_CHAT,
-    BTN_NEWS, BTN_SETTINGS, BTN_SYNC, BTN_HELP, BTN_TRACKER, BTN_TASKS,
+    BTN_NEWS, BTN_SETTINGS, BTN_SYNC, BTN_HELP, BTN_TRACKER, BTN_TASKS, BTN_CHECKIN,
 }
 
-# Сетка 2 колонки: 10 кнопок.
+# Сетка 2 колонки: 11 кнопок, последняя строка неполная.
 MAIN_KB = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text=BTN_TODOS), KeyboardButton(text=BTN_CHAT)],
@@ -44,6 +45,7 @@ MAIN_KB = ReplyKeyboardMarkup(
         [KeyboardButton(text=BTN_NEWS), KeyboardButton(text=BTN_SETTINGS)],
         [KeyboardButton(text=BTN_SYNC), KeyboardButton(text=BTN_HELP)],
         [KeyboardButton(text=BTN_TRACKER), KeyboardButton(text=BTN_TASKS)],
+        [KeyboardButton(text=BTN_CHECKIN)],
     ],
     resize_keyboard=True,
     is_persistent=True,
@@ -126,6 +128,13 @@ async def btn_tasks(message: Message) -> None:
     from src.bot.handlers.tasks import cmd_tasks
 
     await cmd_tasks(message)
+
+
+@router.message(F.text == BTN_CHECKIN)
+async def btn_checkin(message: Message, state: FSMContext) -> None:
+    from src.bot.handlers.checkin import cmd_checkin
+
+    await cmd_checkin(message, state)
 
 
 # ---------- кнопки, которым нужен аргумент ----------
