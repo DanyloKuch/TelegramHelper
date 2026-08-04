@@ -4,6 +4,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
 
 from src.bot.handlers import (
     catchup_cmd,
@@ -32,6 +33,27 @@ from src.userbot.manager import UserbotManager
 
 
 logger = logging.getLogger(__name__)
+
+
+# Показуються у спливному меню Telegram одразу після вводу "/" — тільки основне,
+# решта команд (qrlogin, logout, cancel, index, style, news_channels…) лишаються
+# доступними, просто без підказки в цьому списку.
+MAIN_COMMANDS = [
+    BotCommand(command="chat", description="💬 Чат з контактом"),
+    BotCommand(command="todos", description="📋 Відкриті зобов'язання"),
+    BotCommand(command="tasks", description="📝 Завдання за проєктами"),
+    BotCommand(command="track", description="⏱ Трекер часу"),
+    BotCommand(command="report", description="📊 Звіт трекера по днях"),
+    BotCommand(command="checkin", description="📋 Щоденний чек-ін"),
+    BotCommand(command="digest", description="☀ Ранковий дайджест"),
+    BotCommand(command="news", description="📰 Новини за темою"),
+    BotCommand(command="search", description="🔎 Пошук по повідомленнях"),
+    BotCommand(command="sync", description="🔄 Синхронізація контактів"),
+    BotCommand(command="settings", description="⚙ Налаштування"),
+    BotCommand(command="login", description="🔑 Підключити Telegram-акаунт"),
+    BotCommand(command="menu", description="☰ Показати клавіатуру"),
+    BotCommand(command="help", description="❓ Довідка"),
+]
 
 
 async def run_bot(userbot_manager: UserbotManager) -> None:
@@ -66,6 +88,8 @@ async def run_bot(userbot_manager: UserbotManager) -> None:
     dp.include_router(menu.router)
     # ВАЖНО: free_text — самым последним, чтобы команды и FSM перехватили текст раньше
     dp.include_router(free_text.router)
+
+    await bot.set_my_commands(MAIN_COMMANDS)
 
     me = await bot.get_me()
     logger.info("Control bot started as @%s", me.username)
