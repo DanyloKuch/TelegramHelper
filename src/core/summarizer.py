@@ -33,6 +33,14 @@ CATCHUP_SYSTEM = (
 )
 
 
+ANSWER_SYSTEM = (
+    "Тобі дають історію переписки/каналу і конкретне питання власника. Дай ПРЯМУ, коротку "
+    "відповідь по суті, спираючись лише на цю історію — не переказуй весь чат.\n"
+    "Якщо відповіді в історії немає — прямо скажи, що не знайшов, не вигадуй.\n"
+    "Використовуй HTML-розмітку aiogram (<b>, <i>, <code>). Без markdown."
+)
+
+
 async def summarize_chat(
     provider: LLMProvider,
     contact: Contact,
@@ -76,6 +84,30 @@ async def draft_reply(
     raw = await provider.chat(
         [
             ChatMessage(role="system", content=system),
+            ChatMessage(role="user", content=user_prompt),
+        ],
+        heavy=heavy,
+    )
+    return sanitize_html(raw)
+
+
+async def answer_question(
+    provider: LLMProvider,
+    contact: Contact,
+    messages: list[Message],
+    question: str,
+    *,
+    heavy: bool = False,
+) -> str:
+    transcript = "\n".join(message_to_text(m) for m in messages)
+    user_prompt = (
+        f"Чат/канал: {contact.display_name}\n\n"
+        f"Історія (останні {len(messages)} повідомлень):\n{transcript}\n\n"
+        f"Питання власника: {question}"
+    )
+    raw = await provider.chat(
+        [
+            ChatMessage(role="system", content=ANSWER_SYSTEM),
             ChatMessage(role="user", content=user_prompt),
         ],
         heavy=heavy,

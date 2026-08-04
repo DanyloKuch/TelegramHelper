@@ -16,7 +16,7 @@ from src.core.chat_service import load_chat
 from src.core.commitment_extractor import extract_and_save_commitments
 from src.core.contact_resolver import resolve
 from src.core.news import build_news_digest
-from src.core.summarizer import catchup, draft_reply, summarize_chat
+from src.core.summarizer import answer_question, catchup, draft_reply, summarize_chat
 from src.core import conversation_context as ctx_store
 from src.core.text_sanitizer import sanitize_html
 from src.core.timeutil import fmt_local, is_valid_tz, now_in_tz, tz_short
@@ -262,6 +262,11 @@ async def _execute_intent(intent, message, state, userbot_manager, *, tz_name: s
         await message.answer("Не зрозумів, з яким контактом працювати. Уточни ім'я.")
         return
 
+    question = (intent.get("question") or "").strip() if kind == "ask_chat" else None
+    if kind == "ask_chat" and not question:
+        await message.answer("Що саме запитати? Уточни питання.")
+        return
+
     # kinds розширено на групи/канали: "contact" тут часто — назва чату/каналу з мітки
     # (напр. «Video: розробка порталу»), а не людина.
     candidates = await resolve(client, owner, contact_query, kinds=("user", "chat", "channel"))
@@ -274,6 +279,7 @@ async def _execute_intent(intent, message, state, userbot_manager, *, tz_name: s
         "tasks_for_chat": "tasks",
         "draft_reply":    "draft",
         "catchup":        "catchup",
+        "ask_chat":       "answer",
     }
     cb_action = action_map.get(kind)
     if cb_action is None:
@@ -281,6 +287,10 @@ async def _execute_intent(intent, message, state, userbot_manager, *, tz_name: s
         return
 
     if len(candidates) > 1 and candidates[0].score < 90:
+        if kind == "ask_chat":
+            # питання не влазить у callback_data — переживає вибір контакту через FSM-стан,
+            # за зразком send_message (send.py: send_text).
+            await state.update_data(ask_question=question)
         await message.answer(
             f"З ким саме? (дія: <b>{cb_action}</b>)",
             reply_markup=_candidates_keyboard_chat(cb_action, candidates),
@@ -343,6 +353,10 @@ async def _execute_intent(intent, message, state, userbot_manager, *, tz_name: s
         await message.answer(
             f"⏪ <b>На чому зупинились — {contact.display_name}</b>\n\n{text}"
         )
+
+    elif kind == "ask_chat":
+        text = await answer_question(provider, contact, messages_loaded, question, heavy=heavy)
+        await message.answer(f"💡 <b>{contact.display_name}</b>\n\n{text}")
 
 
 async def _find_chats_and_offer(message, client, query: str, action: str) -> None:
@@ -557,6 +571,8 @@ def _summarize_intent_for_memory(intent: dict) -> str:
         return f"підготував надсилання «{(intent.get('text') or '')[:60]}» для {intent.get('recipient')}"
     if kind in {"summarize_chat", "tasks_for_chat", "draft_reply", "catchup"}:
         return f"{kind} з контактом {intent.get('contact')}"
+    if kind == "ask_chat":
+        return f"відповів на питання «{(intent.get('question') or '')[:60]}» по чату {intent.get('contact')}"
     if kind == "find_in_chats":
         return f"шукав у чатах: {intent.get('query')}"
     if kind == "news_digest":

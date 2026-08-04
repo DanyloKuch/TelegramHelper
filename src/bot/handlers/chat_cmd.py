@@ -4,6 +4,7 @@ import logging
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -11,7 +12,7 @@ from src.bot.filters import OwnerOnly
 from src.core.chat_service import load_chat
 from src.core.commitment_extractor import extract_and_save_commitments
 from src.core.contact_resolver import ContactCandidate, resolve
-from src.core.summarizer import catchup, draft_reply, summarize_chat
+from src.core.summarizer import answer_question, catchup, draft_reply, summarize_chat
 from src.db.repo import get_contact, get_or_create_user
 from src.db.session import get_session
 from src.llm.router import build_provider
@@ -240,6 +241,28 @@ async def cb_catchup(callback: CallbackQuery, userbot_manager: UserbotManager) -
             f"⏪ <b>На чому зупинились — {contact.display_name}</b>\n\n{text}",
             reply_markup=_actions_keyboard(peer_id),
         )
+
+
+@router.callback_query(F.data.startswith("chat:answer:"))
+async def cb_answer(callback: CallbackQuery, userbot_manager: UserbotManager, state: FSMContext) -> None:
+    """Обрано контакт для "ask_chat" після неоднозначного пошуку — питання не влазить у
+    callback_data, тож переживає вибір через FSM-стан (той самий трюк, що й send.py: send_text)."""
+    peer_id = int(callback.data.split(":")[2])
+    data = await state.get_data()
+    question = data.get("ask_question")
+    if not question:
+        await callback.answer("Сесію питання втрачено, спитай ще раз", show_alert=True)
+        return
+
+    bundle = await _action_load(callback, userbot_manager, peer_id)
+    if bundle is None:
+        return
+    _client, _owner, contact, messages, provider, heavy = bundle
+
+    await state.clear()
+    text = await answer_question(provider, contact, messages, question, heavy=heavy)
+    if callback.message:
+        await callback.message.edit_text(f"💡 <b>{contact.display_name}</b>\n\n{text}")
 
 
 @router.message(Command("sync"))
