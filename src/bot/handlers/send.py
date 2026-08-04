@@ -131,7 +131,7 @@ async def cmd_send(
 
     async with get_session() as session:
         owner = await get_or_create_user(session, message.from_user.id)
-    candidates = await resolve(client, owner, recipient_query)
+    candidates = await resolve(client, owner, recipient_query, kinds=("user", "chat", "channel"))
     if not candidates:
         await message.answer(f"Не знайшов контакт «{recipient_query}». Запусти /sync і спробуй знову.")
         return

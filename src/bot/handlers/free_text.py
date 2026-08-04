@@ -194,7 +194,7 @@ async def _execute_intent(intent, message, state, userbot_manager, *, tz_name: s
         if not recipient or not text:
             await message.answer("Не вистачає кому/що надіслати. Уточни.")
             return
-        candidates = await resolve(client, owner, recipient)
+        candidates = await resolve(client, owner, recipient, kinds=("user", "chat", "channel"))
         if not candidates:
             await message.answer(f"Не знайшов контакт «{recipient}». Спробуй /sync.")
             return
