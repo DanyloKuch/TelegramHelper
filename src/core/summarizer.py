@@ -3,6 +3,7 @@
 from src.core.chat_service import message_to_text
 from src.core.style_profile import style_profile_as_prompt_hint
 from src.core.text_sanitizer import sanitize_html
+from src.core.timeutil import fmt_local, now_in_tz
 from src.db.models import Contact, Message
 from src.llm.base import ChatMessage, LLMProvider
 
@@ -36,6 +37,10 @@ CATCHUP_SYSTEM = (
 ANSWER_SYSTEM = (
     "Тобі дають історію переписки/каналу і конкретне питання власника. Дай ПРЯМУ, коротку "
     "відповідь по суті, спираючись лише на цю історію — не переказуй весь чат.\n"
+    "Часові мітки повідомлень і поточний час власника (якщо вказаний) — уже в ЙОГО часовому "
+    "поясі, конвертувати нічого не треба. Якщо в повідомленні є відносний час («за годину», "
+    "«через 30 хв», «завтра»), рахуй його від часу ЦЬОГО конкретного повідомлення і давай "
+    "фінальну відповідь теж у цьому ж часі.\n"
     "Якщо відповіді в історії немає — прямо скажи, що не знайшов, не вигадуй.\n"
     "Використовуй HTML-розмітку aiogram (<b>, <i>, <code>). Без markdown."
 )
@@ -97,12 +102,27 @@ async def answer_question(
     messages: list[Message],
     question: str,
     *,
+    tz_name: str | None = None,
     heavy: bool = False,
 ) -> str:
-    transcript = "\n".join(message_to_text(m) for m in messages)
+    # На відміну від message_to_text (UTC) тут мітки часу — в TZ власника: LLM погано рахує
+    # відносний час («за годину») без явного часового поясу, а UTC-мітка без підпису читається
+    # як локальний час і зсуває відповідь на кілька годин.
+    def _line(m: Message) -> str:
+        who = "Я" if m.is_outgoing else (m.sender_name or "Вони")
+        body = m.transcript or m.text or m.extracted_text or f"[{m.kind}]"
+        when = fmt_local(m.date, tz_name) if tz_name else m.date.strftime("%Y-%m-%d %H:%M")
+        return f"[{when}] {who}: {body}"
+
+    transcript = "\n".join(_line(m) for m in messages)
+    now_line = (
+        f"Поточний час власника: {now_in_tz(tz_name).strftime('%Y-%m-%d %H:%M')} ({tz_name}).\n\n"
+        if tz_name else ""
+    )
     user_prompt = (
         f"Чат/канал: {contact.display_name}\n\n"
-        f"Історія (останні {len(messages)} повідомлень):\n{transcript}\n\n"
+        f"{now_line}"
+        f"Історія (останні {len(messages)} повідомлень, час — у часовому поясі власника):\n{transcript}\n\n"
         f"Питання власника: {question}"
     )
     raw = await provider.chat(

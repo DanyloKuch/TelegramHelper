@@ -355,7 +355,9 @@ async def _execute_intent(intent, message, state, userbot_manager, *, tz_name: s
         )
 
     elif kind == "ask_chat":
-        text = await answer_question(provider, contact, messages_loaded, question, heavy=heavy)
+        text = await answer_question(
+            provider, contact, messages_loaded, question, tz_name=tz_name, heavy=heavy,
+        )
         await message.answer(f"💡 <b>{contact.display_name}</b>\n\n{text}")
 
 

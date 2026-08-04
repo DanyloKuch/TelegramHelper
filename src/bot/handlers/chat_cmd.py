@@ -257,10 +257,12 @@ async def cb_answer(callback: CallbackQuery, userbot_manager: UserbotManager, st
     bundle = await _action_load(callback, userbot_manager, peer_id)
     if bundle is None:
         return
-    _client, _owner, contact, messages, provider, heavy = bundle
+    _client, owner, contact, messages, provider, heavy = bundle
 
     await state.clear()
-    text = await answer_question(provider, contact, messages, question, heavy=heavy)
+    text = await answer_question(
+        provider, contact, messages, question, tz_name=owner.settings.timezone, heavy=heavy,
+    )
     if callback.message:
         await callback.message.edit_text(f"💡 <b>{contact.display_name}</b>\n\n{text}")
 
