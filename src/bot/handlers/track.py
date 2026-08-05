@@ -94,19 +94,27 @@ async def _report_text(telegram_id: int, *, days: int = 14) -> str:
         since = start_of_local_day_utc(tz_name, days_ago=days - 1)
         entries = await list_entries_from(session, owner, since)
 
-    totals: dict[str, float] = {}
+    # day -> project_name -> seconds
+    by_day: dict[str, dict[str, float]] = {}
     for e in entries:
         day_key = fmt_local(e.started_at, tz_name, fmt="%Y-%m-%d")
-        totals[day_key] = totals.get(day_key, 0.0) + _entry_seconds(e, now)
+        by_project = by_day.setdefault(day_key, {})
+        by_project[e.project.name] = by_project.get(e.project.name, 0.0) + _entry_seconds(e, now)
 
     lines = [f"📊 <b>Звіт за останні {days} дн.</b>", ""]
-    if not totals:
+    if not by_day:
         lines.append("<i>Ще немає жодного запису.</i>")
     else:
-        for day_key in sorted(totals, reverse=True):
-            lines.append(f"{day_key} — {fmt_duration(totals[day_key])}")
-        lines.append("")
-        lines.append(f"Всього: <b>{fmt_duration(sum(totals.values()))}</b>")
+        grand_total = 0.0
+        for day_key in sorted(by_day, reverse=True):
+            by_project = by_day[day_key]
+            day_total = sum(by_project.values())
+            grand_total += day_total
+            lines.append(f"<b>{day_key}</b> — {fmt_duration(day_total)}")
+            for project_name in sorted(by_project, key=lambda p: -by_project[p]):
+                lines.append(f"   📁 {project_name} — {fmt_duration(by_project[project_name])}")
+            lines.append("")
+        lines.append(f"Всього: <b>{fmt_duration(grand_total)}</b>")
     return "\n".join(lines)
 
 
